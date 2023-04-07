@@ -13,8 +13,8 @@ namespace wing {
 
 class DB::Impl {
  private:
-  // using StorageBackend = BPlusTreeStorage;
-  using StorageBackend = MemoryTableStorage;
+   using StorageBackend = BPlusTreeStorage;
+  // using StorageBackend = MemoryTableStorage;
 
  public:
   static auto Open(
