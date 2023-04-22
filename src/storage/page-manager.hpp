@@ -216,32 +216,32 @@ public:
 
 	// Find the slot with the minimum key s.t. key >= "key" in argument.
 	// If this slot doesn't exist, return SlotNum().
-	slotid_t LowerBound(std::string_view key) const {
-		slotid_t n=SlotNum();
-		for(slotid_t i=0;i<n;i++) if(slot_key_comp_(Slot(i),key)!=std::weak_ordering::less) return i;
-		return n;
-		// TODO: can be faster
-		// DEBUG
-	}
-	// Find the slot with the minimum key s.t. key > "key" in argument
-	// If this slot doesn't exist, return SlotNum().
-	slotid_t UpperBound(std::string_view key) const {
-		//   printf("? %s\n",key.data());
-		slotid_t n=SlotNum();
-		for(slotid_t i=0;i<n;i++) if(slot_key_comp_(Slot(i),key)==std::weak_ordering::greater) return i;
-		return n;
-		// TODO: can be faster
-		// DEBUG
-	}
-	// Find the key and return the slot ID.
-	// If this key doesn't exist, return SlotNum().
-	slotid_t Find(std::string_view key) const {
-		slotid_t n=SlotNum();
-		for(slotid_t i=0;i<n;i++) if(slot_key_comp_(Slot(i),key)==std::weak_ordering::equivalent) return i;
-		return n;
-		// TODO: can be faster
-		// DEBUG
-	}
+    slotid_t LowerBound(std::string_view key) const {
+        slotid_t n=SlotNum();
+        slotid_t l=0,r=n;
+        while(l<r)
+        {
+            slotid_t mid=(l+r)>>1;
+            if(slot_key_comp_(Slot(mid),key)!=std::weak_ordering::less) r=mid;
+            else l=mid+1;
+        }
+        return l;
+        // DEBUG
+    }
+    // Find the slot with the minimum key s.t. key > "key" in argument
+    // If this slot doesn't exist, return SlotNum().
+    slotid_t UpperBound(std::string_view key) const {
+        slotid_t lower=LowerBound(key);
+        return lower+(lower!=SlotNum()&&slot_key_comp_(Slot(lower),key)==std::weak_ordering::equivalent);
+        // DEBUG
+    }
+    // Find the key and return the slot ID.
+    // If this key doesn't exist, return SlotNum().
+    slotid_t Find(std::string_view key) const {
+        slotid_t lower=LowerBound(key);
+        return lower!=SlotNum()&&slot_key_comp_(Slot(lower),key)==std::weak_ordering::equivalent?lower:SlotNum();
+        // DEBUG
+    }
 	// Find the key and return the slot.
 	// If the key is not found, return std::nullopt.
 	std::optional<std::string_view> FindSlot(std::string_view key) const {
@@ -330,22 +330,20 @@ public:
 	// Delete the slot specified by slot ID.
 	void DeleteSlot(slotid_t slot_id) {
 		std::vector<std::string> slots;
-		while(SlotNum()){ if(SlotNum()-1!=slot_id) slots.push_back(std::string(Slot(SlotNum()-1))); SlotNumMut()--; }
+		while(SlotNum()>slot_id+1){ slots.push_back(std::string(Slot(SlotNum()-1))); SlotNumMut()--; }
+		SlotNumMut()--;
 		while(!slots.empty()){ AppendSlotUnchecked(slots.back()); slots.pop_back(); }
 		// TODO: can be faster
 		// DEBUG
 	}
 	// Delete the slot specified by the key.
 	// Return whether the deletion is successful or not.
-	bool DeleteSlotByKey(std::string_view key) {
-		if(Find(key)==SlotNum()) return false;
-		std::vector<std::string> slots;
-		while(SlotNum()){ if(slot_key_comp_(Slot(SlotNum()-1),key)!=std::weak_ordering::equivalent) slots.push_back(std::string(Slot(SlotNum()-1))); else{ SlotNumMut()--; break; } SlotNumMut()--; }
-		while(!slots.empty()){ AppendSlotUnchecked(slots.back()); slots.pop_back(); }
-		return true;
-		// TODO: can be faster
-		// DEBUG
-	}
+    bool DeleteSlotByKey(std::string_view key) {
+        slotid_t id=Find(key);
+        if(id==SlotNum()) return false;
+        DeleteSlot(id);
+        return true;
+    }
 private:
 	// Some helper classes/functions that you may adopt.
 	class ComparePageOffKey {

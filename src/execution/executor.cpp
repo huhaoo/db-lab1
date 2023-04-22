@@ -7,6 +7,9 @@
 #include "execution/print_executor.hpp"
 #include "execution/project_executor.hpp"
 #include "execution/seqscan_executor.hpp"
+#include <iostream>
+
+#define print_log printf("Running on line %d at file \"%s\"\n",__LINE__,__FILE__),fflush(stdout)
 
 namespace wing {
 
@@ -62,6 +65,20 @@ std::unique_ptr<Executor> ExecutorGenerator::Generate(const PlanNode* plan, DB& 
     auto& tab = db.GetDBSchema()[table_schema_index.value()];
     return std::make_unique<DeleteExecutor>(db.GetModifyHandle(txn_id, delete_plan->table_name_), Generate(delete_plan->ch_.get(), db, txn_id),
                                             FKChecker(tab.GetFK(), tab, txn_id, db), PKChecker(tab.GetName(), tab.GetHidePKFlag(), txn_id, db), tab);
+  }
+
+  else if (plan->type_ == PlanType::Join) {
+    auto join_plan = static_cast<const JoinPlanNode*>(plan);
+    std::cout<<join_plan->ToString()<<std::endl;
+    return std::make_unique<NestloopJoinExecutor>(join_plan->predicate_.GenExpr(), join_plan->ch_->output_schema_, join_plan->ch2_->output_schema_,join_plan->output_schema_,
+                                                  Generate(join_plan->ch_.get(), db, txn_id), Generate(join_plan->ch2_.get(), db, txn_id));
+  }
+
+else if (plan->type_ == PlanType::HashJoin) {
+    auto join_plan = static_cast<const HashJoinPlanNode*>(plan);
+    std::cout<<join_plan->ToString()<<std::endl;
+    return std::make_unique<NestloopJoinExecutor>(join_plan->predicate_.GenExpr(), join_plan->ch_->output_schema_, join_plan->ch2_->output_schema_,join_plan->output_schema_,
+                                                  Generate(join_plan->ch_.get(), db, txn_id), Generate(join_plan->ch2_.get(), db, txn_id));
   }
   
   throw DBException("Unsupported plan node.");

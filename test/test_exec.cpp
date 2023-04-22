@@ -6,12 +6,13 @@
 #include "instance/instance.hpp"
 #include "test.hpp"
 
+#define print_log printf("Running on line %d at file \"%s\"\n",__LINE__,__FILE__),fflush(stdout)
+
 TEST(ExecutorJoinTest, JoinTestNum10Table2) {
   using namespace wing;
   using namespace wing::wing_testing;
   std::filesystem::remove("__tmp0100");
   auto db = std::make_unique<wing::Instance>("__tmp0100", 0);
-
   // Do joins on values.
   {
     auto result = db->Execute("select * from (values(2, 3)), (values(4, 5));");
@@ -24,7 +25,6 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
     EXPECT_TRUE(tuple.ReadInt(3) == 5);
     EXPECT_FALSE(result.Next());
   }
-
   // Test duplicate tuple join.
   {
     auto result = db->Execute("select * from (values(1), (1), (1)), (values(2), (2), (2));");
@@ -33,7 +33,6 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
     for (int i = 0; i < 9; i++) answer.emplace_back(MkVec(IV::Create(1), IV::Create(2)));
     CHECK_ALL_SORTED_ANS(answer, result, 2);
   }
-
   {
     auto result = db->Execute("select * from (values(1), (1), (1)) A(a), (values(2), (2), (2)) B(b) where A.a = B.b - 1;");
     AnsVec answer;
@@ -41,7 +40,6 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
     for (int i = 0; i < 9; i++) answer.emplace_back(MkVec(IV::Create(1), IV::Create(2)));
     CHECK_ALL_SORTED_ANS(answer, result, 2);
   }
-
   {
     auto result = db->Execute("select * from (values(2, 3)) join (values(4, 5)) on 1;");
     EXPECT_TRUE(result.Valid());
@@ -53,13 +51,11 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
     EXPECT_TRUE(tuple.ReadInt(3) == 5);
     EXPECT_FALSE(result.Next());
   }
-
   {
     auto result = db->Execute("select * from (values(2, 3)) as A(a, b) join (values(4, 5)) as A(c, d) on a = c;");
     EXPECT_TRUE(result.Valid());
     EXPECT_FALSE(result.Next());
   }
-
   // One database records the number of apples people have. Another records the number of bananas people have.
   // Now I want to know how much money people get when they sell their fruit.
   {
@@ -78,7 +74,7 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
     EXPECT_TRUE(CheckAns(tuple.ReadString(0), answer, tuple, 3));
     EXPECT_FALSE(result.Next());
   }
-
+  print_log;
   // xxxholic
   {
     EXPECT_TRUE(db->Execute("create table Numbers(t varchar(30) primary key, a int32, b float64);").Valid());
@@ -93,18 +89,19 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
                             " ('laughaholic', 9, 7.0),"
                             " ('spendaholic', 10, 75.0);")
                     .Valid());
+    print_log;
     {
       auto result = db->Execute("select A.t, A.b from Numbers as A, Numbers as B where A.a * B.a = 0;");
       EXPECT_TRUE(result.Valid());
       EXPECT_FALSE(result.Next());
     }
-
+    print_log;
     {
       auto result = db->Execute("select A.t, A.b from Numbers as A, Numbers as B where A.a * B.a > 100;");
       EXPECT_TRUE(result.Valid());
       EXPECT_FALSE(result.Next());
     }
-
+    print_log;
     {
       auto result = db->Execute("select A.b, A.t from (values(10), (3), (4)) as C(c), Numbers as A where A.a = C.c;");
       EXPECT_TRUE(result.Valid());
@@ -114,7 +111,7 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
       answer.emplace("milkaholic", MkVec(FV::Create(5.9), SV::Create("milkaholic")));
       CHECK_ALL_ANS(answer, result, tuple.ReadString(1), 2);
     }
-
+    print_log;
     {
       auto result = db->Execute("select A.b, A.t from Numbers as A, (values(1), (8), (-1), (19)) as C(c) where A.a = C.c;");
       AnsMap<std::string> answer;
@@ -122,7 +119,7 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
       answer.emplace("lifeaholic", MkVec(FV::Create(11.9), SV::Create("lifeaholic")));
       CHECK_ALL_ANS(answer, result, tuple.ReadString(1), 2);
     }
-
+    print_log;
     {
       auto result =
           db->Execute("select A.t, B.t, A.b * B.b from Numbers as A, Numbers as B where A.a * B.a < 50 and A.t < 'm' and B.t > 'bookaholic';");
@@ -173,7 +170,7 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
       EXPECT_FALSE(result.Next());
     }
   }
-
+  print_log;
   db = nullptr;
   std::filesystem::remove("__tmp0100");
 }
