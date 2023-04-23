@@ -8,6 +8,7 @@
 #include "catalog/db.hpp"
 #include "parser/expr.hpp"
 #include "storage/storage.hpp"
+#include "common/murmurhash.hpp"
 
 #define print_log printf("Running on line %d at file \"%s\"\n",__LINE__,__FILE__),fflush(stdout)
 
@@ -42,50 +43,76 @@ class ExecutorGenerator {
 class NestloopJoinExecutor:public Executor
 {
  public:
-  NestloopJoinExecutor(const std::unique_ptr<Expr>& expr, const OutputSchema& In1, const OutputSchema& In2, const OutputSchema &Out, std::unique_ptr<Executor> ch1,std::unique_ptr<Executor> ch2)
-      : predicate_(JoinExprFunction(expr.get(),In1,In2)), is1(In1), is2(In2), os(Out), c1(std::move(ch1)), c2(std::move(ch2))
-      {
-        v1=new StaticFieldRef[is1.Size()];
-        v2=new StaticFieldRef[is2.Size()];
-        out=new StaticFieldRef[os.Size()];
-      }
-  ~NestloopJoinExecutor()override{ delete[] v1; delete[] v2; delete[] out; }
-  void Init()override{ print_log; c1->Init(); c2->Init(); started=false; }
+  NestloopJoinExecutor(const std::unique_ptr<Expr>& expr, const OutputSchema& In1, const OutputSchema& In2, const OutputSchema& Out, std::unique_ptr<Executor> ch1,std::unique_ptr<Executor> ch2)
+      : predicate_(expr.get(),Out), is1(In1), is2(In2), os(Out), c1(std::move(ch1)), c2(std::move(ch2)), t(In1){ read=false; out=new StaticFieldRef[os.Size()]; }
+  ~NestloopJoinExecutor()override{ delete[] out; }
+  void Init()override{ c1->Init(); c2->Init(); }
   InputTuplePtr Next()override
   {
-    print_log;
-    if(!started){ started=true; V2=Next2(); }
+    if(!read){ read=true; v2=c2->Next(); p=0; while((v1=c1->Next())) t.Append(v1.Data()); }
     while(true)
     {
-      if(!V2) return InputTuplePtr();
-      if(!Next1()){ c1->Init(); V2=Next2(); continue; }
-      if(predicate_&&predicate_.Evaluate(v1,v2).ReadInt()==0) continue;
-      merge(); return out;
+      if(!v2) return v2;
+      if(p==t.GetPointerVec().size()){ p=0; v2=c2->Next(); continue; } v1=t.GetPointerVec()[p++];
+      merge(); if(predicate_&&predicate_.Evaluate(out).ReadInt()==false) continue;
+      return out;
     }
   }
 private:
-  JoinExprFunction predicate_;
+  ExprFunction predicate_;
   const OutputSchema& is1,is2,os;
   std::unique_ptr<Executor> c1,c2;
-  bool started;
-  StaticFieldRef *v1,*v2,*out;
-  bool V2;
+  bool read;
+  InputTuplePtr v2;
+  InputTuplePtr v1; TupleStore t; size_t p;
+  StaticFieldRef *out;
+  void merge()
+  {
+    print_log;
+    memcpy(out,v1.Data(),sizeof(StaticFieldRef*)*is1.Size());
+    print_log;
+    if(is2.IsRaw()) Tuple::DeSerialize(out+is1.Size(),v2.Data(),is2.GetCols());
+    else memcpy(out+is1.Size(),v2.Data(),sizeof(StaticFieldRef*)*is2.Size());
+  }
+  friend class HashJoinExecutor;
+};
 
-  bool Next1()
+class HashJoinExecutor:public NestloopJoinExecutor
+{
+ public:
+  HashJoinExecutor(const std::unique_ptr<Expr>& expr, const OutputSchema& In1, const OutputSchema& In2, const OutputSchema& Out, std::unique_ptr<Executor> ch1,std::unique_ptr<Executor> ch2,const std::vector<std::unique_ptr<Expr>> &ex1,const std::vector<std::unique_ptr<Expr>> &ex2)
+      :NestloopJoinExecutor(expr,In1,In2,Out,std::move(ch1),std::move(ch2)){ for(size_t i=0;i<ex1.size();i++)
+        { e1.push_back(std::make_pair(ExprFunction(ex1[i].get(),In1),ex1[i]->ret_type_));
+          e2.push_back(std::make_pair(ExprFunction(ex2[i].get(),In2),ex2[i]->ret_type_)); } }
+  InputTuplePtr Next()override
   {
-    InputTuplePtr r=c1->Next();
-    if(is1.IsRaw()){ if(!r) return false; Tuple::DeSerialize(v1,r.Data(),is1.GetCols()); }
-    else{ if(!r) return false; memcpy(v1,r.Data(),sizeof(StaticFieldRef*)*is1.Size()); }
-    return true;
+    if(!read){ read=true; while((v1=c1->Next())){ uint64_t H=hash(v1,e1); t.Append(v1.Data()); h[H].push_back((StaticFieldRef*)t.GetPointerVec().back()); } Next2(); }
+    while(true)
+    {
+      if(!v2) return v2;
+      if(T==nullptr||p==T->size()){ Next2(); continue; } v1=(*T)[p++];
+      merge(); if(predicate_&&predicate_.Evaluate(out).ReadInt()==false) continue;
+      return out;
+    }
   }
-  bool Next2()
+ private:
+  std::vector<std::pair<ExprFunction,RetType>> e1,e2;
+  std::unordered_map<uint64_t,std::vector<StaticFieldRef*> > h;
+  std::vector<StaticFieldRef*> *T;
+  static const uint64_t sed=1000000007,mul=998244353;
+  uint64_t hash_(InputTuplePtr in,std::pair<ExprFunction,RetType> e,uint64_t sed)
   {
-    InputTuplePtr r=c2->Next();
-    if(is2.IsRaw()){ if(!r) return false; Tuple::DeSerialize(v2,r.Data(),is2.GetCols()); }
-    else{ if(!r) return false; memcpy(v2,r.Data(),sizeof(StaticFieldRef*)*is2.Size()); }
-    return true;
+    assert(e.second!=RetType::FLOAT);
+    if(e.second==RetType::INT) return sed*mul+e.first.Evaluate(in).ReadInt();
+    return wing::utils::Hash(e.first.Evaluate(in).ReadStringView(),sed);
   }
-  void merge(){ memcpy(out,v1,sizeof(StaticFieldRef)*is1.Size()); memcpy(out+is1.Size(),v2,sizeof(StaticFieldRef)*is2.Size()); }
+  uint64_t hash(InputTuplePtr in,std::vector<std::pair<ExprFunction,RetType>> e){ uint64_t ret=sed; for(auto i:e) ret=hash_(in,i,ret); return ret; }
+  void Next2()
+  {
+    v2=c2->Next(); if(!v2){ T=nullptr; return; }
+    p=0; uint64_t H=hash(v2,e2);
+    if(h.count(H)) T=&h[H]; else T=nullptr;
+  }
 };
 
 }  // namespace wing

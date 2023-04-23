@@ -74,7 +74,7 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
     EXPECT_TRUE(CheckAns(tuple.ReadString(0), answer, tuple, 3));
     EXPECT_FALSE(result.Next());
   }
-  print_log;
+  
   // xxxholic
   {
     EXPECT_TRUE(db->Execute("create table Numbers(t varchar(30) primary key, a int32, b float64);").Valid());
@@ -89,19 +89,19 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
                             " ('laughaholic', 9, 7.0),"
                             " ('spendaholic', 10, 75.0);")
                     .Valid());
-    print_log;
+    
     {
       auto result = db->Execute("select A.t, A.b from Numbers as A, Numbers as B where A.a * B.a = 0;");
       EXPECT_TRUE(result.Valid());
       EXPECT_FALSE(result.Next());
     }
-    print_log;
+    
     {
       auto result = db->Execute("select A.t, A.b from Numbers as A, Numbers as B where A.a * B.a > 100;");
       EXPECT_TRUE(result.Valid());
       EXPECT_FALSE(result.Next());
     }
-    print_log;
+    
     {
       auto result = db->Execute("select A.b, A.t from (values(10), (3), (4)) as C(c), Numbers as A where A.a = C.c;");
       EXPECT_TRUE(result.Valid());
@@ -111,7 +111,7 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
       answer.emplace("milkaholic", MkVec(FV::Create(5.9), SV::Create("milkaholic")));
       CHECK_ALL_ANS(answer, result, tuple.ReadString(1), 2);
     }
-    print_log;
+    
     {
       auto result = db->Execute("select A.b, A.t from Numbers as A, (values(1), (8), (-1), (19)) as C(c) where A.a = C.c;");
       AnsMap<std::string> answer;
@@ -119,7 +119,7 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
       answer.emplace("lifeaholic", MkVec(FV::Create(11.9), SV::Create("lifeaholic")));
       CHECK_ALL_ANS(answer, result, tuple.ReadString(1), 2);
     }
-    print_log;
+    
     {
       auto result =
           db->Execute("select A.t, B.t, A.b * B.b from Numbers as A, Numbers as B where A.a * B.a < 50 and A.t < 'm' and B.t > 'bookaholic';");
@@ -170,7 +170,7 @@ TEST(ExecutorJoinTest, JoinTestNum10Table2) {
       EXPECT_FALSE(result.Next());
     }
   }
-  print_log;
+  
   db = nullptr;
   std::filesystem::remove("__tmp0100");
 }

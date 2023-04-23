@@ -74,11 +74,14 @@ std::unique_ptr<Executor> ExecutorGenerator::Generate(const PlanNode* plan, DB& 
                                                   Generate(join_plan->ch_.get(), db, txn_id), Generate(join_plan->ch2_.get(), db, txn_id));
   }
 
-else if (plan->type_ == PlanType::HashJoin) {
+  else if (plan->type_ == PlanType::HashJoin) {
     auto join_plan = static_cast<const HashJoinPlanNode*>(plan);
-    std::cout<<join_plan->ToString()<<std::endl;
+     std::cout<<join_plan->ToString()<<std::endl;
     return std::make_unique<NestloopJoinExecutor>(join_plan->predicate_.GenExpr(), join_plan->ch_->output_schema_, join_plan->ch2_->output_schema_,join_plan->output_schema_,
-                                                  Generate(join_plan->ch_.get(), db, txn_id), Generate(join_plan->ch2_.get(), db, txn_id));
+                                              Generate(join_plan->ch_.get(), db, txn_id), Generate(join_plan->ch2_.get(), db, txn_id));
+    return std::make_unique<HashJoinExecutor>(join_plan->predicate_.GenExpr(), join_plan->ch_->output_schema_, join_plan->ch2_->output_schema_,join_plan->output_schema_,
+                                              Generate(join_plan->ch_.get(), db, txn_id), Generate(join_plan->ch2_.get(), db, txn_id),
+                                              join_plan->left_hash_exprs_,join_plan->right_hash_exprs_);
   }
   
   throw DBException("Unsupported plan node.");
