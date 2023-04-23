@@ -82,19 +82,40 @@ std::unique_ptr<Executor> ExecutorGenerator::Generate(
 
   else if (plan->type_ == PlanType::Join) {
     auto join_plan = static_cast<const JoinPlanNode*>(plan);
-    std::cout<<join_plan->ToString()<<std::endl;
+    // std::cout<<join_plan->ToString()<<std::endl;
     return std::make_unique<NestloopJoinExecutor>(join_plan->predicate_.GenExpr(), join_plan->ch_->output_schema_, join_plan->ch2_->output_schema_,join_plan->output_schema_,
                                                   Generate(join_plan->ch_.get(), db, txn_id), Generate(join_plan->ch2_.get(), db, txn_id));
   }
-
   else if (plan->type_ == PlanType::HashJoin) {
     auto join_plan = static_cast<const HashJoinPlanNode*>(plan);
-     std::cout<<join_plan->ToString()<<std::endl;
-    return std::make_unique<NestloopJoinExecutor>(join_plan->predicate_.GenExpr(), join_plan->ch_->output_schema_, join_plan->ch2_->output_schema_,join_plan->output_schema_,
-                                              Generate(join_plan->ch_.get(), db, txn_id), Generate(join_plan->ch2_.get(), db, txn_id));
+    //  std::cout<<join_plan->ToString()<<std::endl;
+    // return std::make_unique<NestloopJoinExecutor>(join_plan->predicate_.GenExpr(), join_plan->ch_->output_schema_, join_plan->ch2_->output_schema_,join_plan->output_schema_,
+    //                                           Generate(join_plan->ch_.get(), db, txn_id), Generate(join_plan->ch2_.get(), db, txn_id));
     return std::make_unique<HashJoinExecutor>(join_plan->predicate_.GenExpr(), join_plan->ch_->output_schema_, join_plan->ch2_->output_schema_,join_plan->output_schema_,
                                               Generate(join_plan->ch_.get(), db, txn_id), Generate(join_plan->ch2_.get(), db, txn_id),
                                               join_plan->left_hash_exprs_,join_plan->right_hash_exprs_);
+  }
+
+  else if (plan->type_ == PlanType::Aggregate) {
+    auto aggregate_plan = static_cast<const AggregatePlanNode*>(plan);
+    // std::cout<<aggregate_plan->ToString()<<std::endl;
+    return std::make_unique<HashAggregateExecutor>(aggregate_plan->group_predicate_.GenExpr(),aggregate_plan->ch_->output_schema_,aggregate_plan->output_schema_,
+                                                   Generate(aggregate_plan->ch_.get(), db, txn_id),aggregate_plan->output_exprs_,aggregate_plan->group_by_exprs_);
+  }
+
+  else if (plan->type_ == PlanType::Order) {
+    auto order_plan = static_cast<const OrderByPlanNode*>(plan);
+    // std::cout<<order_plan->ToString()<<std::endl;
+    return std::make_unique<OrderExecutor>(order_plan->ch_->output_schema_,order_plan->output_schema_,Generate(order_plan->ch_.get(),db,txn_id),order_plan->order_by_exprs_);
+  }
+  else if (plan->type_ == PlanType::Limit) {
+    auto limit_plan = static_cast<const LimitPlanNode*>(plan);
+    // std::cout<<limit_plan->ToString()<<std::endl;
+    return std::make_unique<LimitExecutor>(Generate(limit_plan->ch_.get(),db,txn_id),limit_plan->offset_,limit_plan->limit_size_);
+  }
+  else if (plan->type_ == PlanType::Distinct) {
+    auto distinct_plan = static_cast<const DistinctPlanNode*>(plan);
+    return std::make_unique<DistinctExecutor>(Generate(distinct_plan->ch_.get(),db,txn_id),distinct_plan->output_schema_);
   }
   
   throw DBException("Unsupported plan node.");

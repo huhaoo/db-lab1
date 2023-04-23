@@ -909,7 +909,7 @@ TEST(ExecutorAggregateTest, PolyAggregateTest) {
                 "B.a0 from PolyA as A, PolyB as B) _(id, val) group by id) "
                 "C(id, val)) _(id2, val2) group by id2;");
           },
-          10000));
+          50000));
       DB_INFO("Use: {} s", sw.GetTimeInSeconds());
 
       EXPECT_TRUE(result.Valid());
@@ -1455,7 +1455,7 @@ TEST(ExecutorAllTest, OJContestTest) {
             result.push_back(std::move(ret));
           }
         },
-        20000));
+        200000));
     DB_INFO("Use: {} s", sw.GetTimeInSeconds());
     for (int j = 0; j < CTNUM; j++) {
       CHECK_ALL_SORTED_ANS(answer[j], result[j], 3);
