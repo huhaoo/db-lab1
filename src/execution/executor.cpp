@@ -7,6 +7,7 @@
 #include "execution/print_executor.hpp"
 #include "execution/project_executor.hpp"
 #include "execution/seqscan_executor.hpp"
+#include"functions/functions.hpp"
 #include <iostream>
 
 #define print_log printf("Running on line %d at file \"%s\"\n",__LINE__,__FILE__),fflush(stdout)
@@ -64,6 +65,17 @@ std::unique_ptr<Executor> ExecutorGenerator::Generate(
     return std::make_unique<SeqScanExecutor>(
         db.GetIterator(txn_id, seqscan_plan->table_name_),
         seqscan_plan->predicate_.GenExpr(), seqscan_plan->output_schema_);
+  }
+
+  else if (plan->type_ == PlanType::RangeScan) {
+    auto rangescan_plan = static_cast<const RangeScanPlanNode*>(plan);
+    auto table_schema_index = db.GetDBSchema().Find(rangescan_plan->table_name_);
+    if (!table_schema_index) {
+      throw DBException("Cannot find table \'{}\'", rangescan_plan->table_name_);
+    }
+    return std::make_unique<SeqScanExecutor>(
+        db.GetRangeIterator(txn_id, rangescan_plan->table_name_,convert_bound_from_pair_to_tuple(rangescan_plan->range_l_),convert_bound_from_pair_to_tuple(rangescan_plan->range_r_)),
+        rangescan_plan->predicate_.GenExpr(), rangescan_plan->output_schema_);
   }
 
   else if (plan->type_ == PlanType::Delete) {

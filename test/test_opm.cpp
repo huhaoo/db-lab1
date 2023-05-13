@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <iostream>
 
 #include "catalog/stat.hpp"
 #include "common/stopwatch.hpp"
@@ -478,6 +479,7 @@ RTGenType&& tuple_gen, DBType* db, GenRandomKeyFunc&& rgen_func, GenValueClauseF
             } else {
               EXPECT_FALSE(tuple);
             }
+            if(i%1000==0) std::cout<<i<<std::endl;
           }
         },
         10000));

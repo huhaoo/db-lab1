@@ -336,6 +336,7 @@ class BPlusTree {
 	}
 	// Return an iterator that iterates from the first element.
 	Iter Begin() {
+		putchar('-');
 		if(IsEmpty()) return Iter(0,0,this);
 		pgid_t x=LevelNum()?SmallestLeaf(GetInnerPage(Root()),LevelNum()):Root();
 		return Iter(x,0,this);
@@ -344,6 +345,7 @@ class BPlusTree {
 	// Return an iterator that points to the tuple with the minimum key
 	// s.t. key >= "key" in argument
 	Iter LowerBound(std::string_view key) {
+		putchar('+');
 		if(IsEmpty()) return Iter(0,0,this);
 		LeafPage x=access_leaf(key); slotid_t s=x.LowerBound(key);
 		return s==x.SlotNum()?Iter(GetLeafNext(x),0,this):Iter(x.ID(),s,this);
@@ -352,6 +354,7 @@ class BPlusTree {
 	// Return an iterator that points to the tuple with the minimum key
 	// s.t. key > "key" in argument
 	Iter UpperBound(std::string_view key) {
+		putchar('*');
 		if(IsEmpty()) return Iter(0,0,this);
 		LeafPage x=access_leaf(key); slotid_t s=x.UpperBound(key);
 		return s==x.SlotNum()?Iter(GetLeafNext(x),0,this):Iter(x.ID(),s,this);
