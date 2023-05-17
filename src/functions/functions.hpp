@@ -75,5 +75,17 @@ namespace wing
 			assert(0);
 		}
 	}
+	class timer
+	{
+	private:
+		time_t t;
+	public:
+		timer():t(0){}
+		inline void start(){ t-=clock(); }
+		inline void end(){ t+=clock(); }
+		void clear(bool output=false){ if(output) printf("The sum of time between starts and ends are: %.6lfs\n",(double)t/CLOCKS_PER_SEC); t=0; }
+		~timer(){ clear(true); }
+	};
+	static timer timer_;
 }
 #endif

@@ -2,6 +2,7 @@
 #define SAKURA_SEQSCAN_EXECUTOR_H__
 
 #include "execution/executor.hpp"
+#include"functions/functions.hpp"
 #include <iostream>
 
 namespace wing {
@@ -31,6 +32,21 @@ class SeqScanExecutor : public Executor {
   size_t output_size=0;
   std::unique_ptr<Iterator<const uint8_t*>> iter_;
   ExprFunction predicate_;
+};
+
+class ScanOneExecutor : public Executor {
+ public:
+  ScanOneExecutor(std::unique_ptr<Iterator<const uint8_t*>> iter)
+    : iter_(std::move(iter)){}
+  void Init() override { iter_->Init(); }
+  InputTuplePtr Next() override {
+    if(output_size++) return {};
+    return iter_->Next();
+  }
+
+ private:
+  size_t output_size=0;
+  std::unique_ptr<Iterator<const uint8_t*>> iter_;
 };
 
 }  // namespace wing

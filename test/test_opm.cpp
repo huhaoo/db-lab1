@@ -8,6 +8,7 @@
 #include "instance/instance.hpp"
 #include "test.hpp"
 #include "zipf.hpp"
+#include "functions/functions.hpp"
 
 TEST(OptimizerTest, PushdownTest) {
   using namespace wing;

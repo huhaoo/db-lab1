@@ -38,7 +38,9 @@ std::unique_ptr<PlanNode> LogicalOptimizer::Optimize(
   R.push_back(std::make_unique<PushDownFilterRule>());
   R.push_back(std::make_unique<ConvertToRangeScanRule>(db));
   // std::cout<<plan->ToString()<<std::endl;
+  // timer_.start();
   plan = Apply(std::move(plan), R);
+  // timer_.end();
   // std::cout<<plan->ToString()<<std::endl<<std::endl;
 
   return plan;
