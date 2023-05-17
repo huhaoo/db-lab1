@@ -76,9 +76,6 @@ std::unique_ptr<Executor> ExecutorGenerator::Generate(
     if (!table_schema_index) {
       throw DBException("Cannot find table \'{}\'", rangescan_plan->table_name_);
     }
-    if(rangescan_plan->predicate_.GetVec().size()==1&&rangescan_plan->range_l_.first.type_!=FieldType::EMPTY&&rangescan_plan->range_r_.first.type_!=FieldType::EMPTY&&(rangescan_plan->range_l_.first<=>rangescan_plan->range_r_.first)==std::partial_ordering::equivalent&&rangescan_plan->range_l_.second&&rangescan_plan->range_r_.second)
-      std::make_unique<ScanOneExecutor>(
-          db.GetRangeIterator(txn_id, rangescan_plan->table_name_,convert_bound_from_pair_to_tuple(rangescan_plan->range_l_),{std::string_view(),true,false}));
     // putchar('/');
     return std::make_unique<SeqScanExecutor>(
         db.GetRangeIterator(txn_id, rangescan_plan->table_name_,convert_bound_from_pair_to_tuple(rangescan_plan->range_l_),convert_bound_from_pair_to_tuple(rangescan_plan->range_r_)),
