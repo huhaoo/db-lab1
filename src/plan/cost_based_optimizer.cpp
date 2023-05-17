@@ -167,8 +167,8 @@ std::unique_ptr<PlanNode> CostBasedOptimizer_::solve()
   std::vector<std::unique_ptr<OptRule>> R;
   R.push_back(std::make_unique<ConvertToHashJoinRule>());
   plan = Apply(std::move(plan), R, db);
-  for(int i=0;i<n;i++) printf("%.6lf ",summary[1<<i].size_); putchar(10);
-  printf("Expect size: %.6lf\n",summary[(1<<n)-1].size_); std::cout<<plan->ToString()<<std::endl<<std::endl;
+  // for(int i=0;i<n;i++) printf("%.6lf ",summary[1<<i].size_); putchar(10);
+  // printf("Expect size: %.6lf\n",summary[(1<<n)-1].size_); std::cout<<plan->ToString()<<std::endl<<std::endl;
 
   return plan->clone();
 }

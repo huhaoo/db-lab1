@@ -109,6 +109,7 @@ class CardEstimator {
         else if(p.count(id0)&&b.count(id1)){ rate=std::max({rate,build.size_*b[id1],probe.size_*p[id0]}); }
       }
     ret.size_/=rate;
+    ret.size_=std::max(ret.size_,(double)10);
     return ret;
   }
 };

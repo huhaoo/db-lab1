@@ -57,7 +57,7 @@ class NestloopJoinExecutor:public Executor
     {
       if(!v2)
       {
-        if(output_size){ printf("Join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
+        // if(output_size){ printf("Join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
         return v2;
       }
       if(p==t.GetPointerVec().size()){ p=0; v2=c2->Next(); continue; } v1=t.GetPointerVec()[p++];
@@ -114,30 +114,37 @@ class HashJoinExecutor:public NestloopJoinExecutor,public naive_hash
   {
     if(!read)
     {
-      read=true; while((v1=c1->Next())){ uint64_t H=hash(v1,e1); t.Append(v1.Data()); h[H].push_back((StaticFieldRef*)t.GetPointerVec().back()); } Next2();
+      std::vector<uint64_t> H;
+      std::vector<StaticFieldRef*> refs;
+      read=true; while((v1=c1->Next())){ H.push_back(hash(v1,e1)); t.Append(v1.Data()); refs.push_back((StaticFieldRef*)t.GetPointerVec().back()); }
+      while(hash_map_size<H.size()) hash_map_size<<=1;; h.resize(hash_map_size);
+      for(size_t i=0;i<H.size();i++) h[H[i]%hash_map_size].push_back({H[i],refs[i]});
+      Next2();
     }
     while(true)
     {
       if(!v2)
       {
-        if(output_size){ printf("Hash join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
+        // if(output_size){ printf("Hash join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
         return v2;
       }
-      if(T==nullptr||p==T->size()){ Next2(); continue; } v1=(*T)[p++];
+      if(T==nullptr||p==T->size()){ Next2(); continue; } auto V1=(*T)[p++];
+      if(V1.first!=H2) continue; v1=V1.second;
       merge(); if(predicate_&&predicate_.Evaluate(out).ReadInt()==false) continue;
       output_size++;
       return out;
     }
   }
  private:
+  size_t hash_map_size=1;
   std::vector<std::pair<ExprFunction,RetType>> e1,e2;
-  std::unordered_map<uint64_t,std::vector<StaticFieldRef*> > h;
-  std::vector<StaticFieldRef*> *T;
+  std::vector<std::vector<std::pair<uint64_t,StaticFieldRef*> > > h;
+  std::vector<std::pair<uint64_t,StaticFieldRef*> > *T;
+  uint64_t H2;
   void Next2()
   {
     v2=c2->Next(); if(!v2){ T=nullptr; return; }
-    p=0; uint64_t H=hash(v2,e2);
-    if(h.count(H)) T=&h[H]; else T=nullptr;
+    p=0; H2=hash(v2,e2); T=&h[H2%hash_map_size];
   }
 };
 
@@ -182,7 +189,7 @@ class HashAggregateExecutor:public Executor,public naive_hash
         if(_gc) gc.Aggregate(a[id].second.back(),v);
       }
     }
-    std::cout<<"Aggregate init finished, input size= "<<input_size<<std::endl;
+    // std::cout<<"Aggregate init finished, input size= "<<input_size<<std::endl;
     ptr=0;
   }
   InputTuplePtr Next()override
