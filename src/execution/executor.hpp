@@ -55,13 +55,19 @@ class NestloopJoinExecutor:public Executor
     if(!read){ read=true; v2=c2->Next(); p=0; while((v1=c1->Next())) t.Append(v1.Data()); }
     while(true)
     {
-      if(!v2) return v2;
+      if(!v2)
+      {
+        if(output_size){ printf("Join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
+        return v2;
+      }
       if(p==t.GetPointerVec().size()){ p=0; v2=c2->Next(); continue; } v1=t.GetPointerVec()[p++];
       merge(); if(predicate_&&predicate_.Evaluate(out).ReadInt()==false) continue;
+      output_size++;
       return out;
     }
   }
 private:
+  size_t output_size=0;
   ExprFunction predicate_;
   const OutputSchema is1,is2,os;
   std::unique_ptr<Executor> c1,c2;
@@ -106,12 +112,20 @@ class HashJoinExecutor:public NestloopJoinExecutor,public naive_hash
           e2.push_back(std::make_pair(ExprFunction(ex2[i].get(),In2),ex2[i]->ret_type_)); } }
   InputTuplePtr Next()override
   {
-    if(!read){ read=true; while((v1=c1->Next())){ uint64_t H=hash(v1,e1); t.Append(v1.Data()); h[H].push_back((StaticFieldRef*)t.GetPointerVec().back()); } Next2(); }
+    if(!read)
+    {
+      read=true; while((v1=c1->Next())){ uint64_t H=hash(v1,e1); t.Append(v1.Data()); h[H].push_back((StaticFieldRef*)t.GetPointerVec().back()); } Next2();
+    }
     while(true)
     {
-      if(!v2) return v2;
+      if(!v2)
+      {
+        if(output_size){ printf("Hash join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
+        return v2;
+      }
       if(T==nullptr||p==T->size()){ Next2(); continue; } v1=(*T)[p++];
       merge(); if(predicate_&&predicate_.Evaluate(out).ReadInt()==false) continue;
+      output_size++;
       return out;
     }
   }
@@ -168,7 +182,7 @@ class HashAggregateExecutor:public Executor,public naive_hash
         if(_gc) gc.Aggregate(a[id].second.back(),v);
       }
     }
-    std::cout<<"Init finished, input size="<<input_size<<std::endl;
+    std::cout<<"Aggregate init finished, input size= "<<input_size<<std::endl;
     ptr=0;
   }
   InputTuplePtr Next()override
