@@ -12,10 +12,12 @@ std::unique_ptr<PlanNode> LogicalOptimizer::Apply(
   while (true) {
     bool flag = false;
     for (auto& a : rules)
+    {
       if (a->Match(plan.get())) {
         plan = a->Transform(std::move(plan));
         flag = true;
       }
+    }
     if (!flag)
       break;
   }

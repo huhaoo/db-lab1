@@ -127,7 +127,7 @@ public:
 	}
 	std::unique_ptr<PlanNode> Transform(std::unique_ptr<PlanNode> node_unique_ptr) override
 	{
-		std::cout<<node_unique_ptr->ToString()<<std::endl;
+		// std::cout<<node_unique_ptr->ToString()<<std::endl;
 		PlanNode* node=node_unique_ptr.get();
 		PredicateVec &p_ref=(node->type_==PlanType::Join?((JoinPlanNode*)node)->predicate_:((HashJoinPlanNode*)node)->predicate_);
 		PredicateVec p_temp; p_temp.swap(p_ref);

@@ -13,6 +13,7 @@ class CountMinSketch {
  public:
   const static uint32_t kDefaultHashCounts = 8;
   const static uint32_t kDefaultHashBuckets = 2027;
+  const static uint64_t sed=0x12345678;
   CountMinSketch(size_t buckets, size_t funcs)
     : buckets_(buckets), funcs_(funcs), data_(buckets * funcs) {}
   CountMinSketch() : CountMinSketch(kDefaultHashBuckets, kDefaultHashCounts) {}
@@ -32,7 +33,9 @@ class CountMinSketch {
 class HyperLL {
  public:
   const static size_t kDefaultRegCount = 1024;
-  HyperLL(size_t reg_count) : data_(reg_count) {}
+  const static uint64_t sed=0x12345678;
+  const static double _alpha[128];
+  HyperLL(size_t reg_count) : m(reg_count),n(reg_count),alpha(n<128?_alpha[n]:(double)0.7213/(1+(double)1.079/n)) { }
   HyperLL() : HyperLL(kDefaultRegCount) {}
   /* Add data into the set. */
   void Add(std::string_view data);
@@ -40,8 +43,8 @@ class HyperLL {
   double GetDistinctCounts() const;
 
  private:
-  std::vector<uint8_t> data_;
-  size_t N_{0};
+  std::vector<uint8_t> m;
+  size_t n{0}; double alpha;
 };
 
 /* The statistics of a table. Information stored in it cannot be modified. */

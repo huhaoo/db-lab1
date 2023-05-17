@@ -99,32 +99,33 @@ class BPlusTree {
 		Iter(const Iter&) = delete;
 		Iter& operator=(const Iter&) = delete;
 		Iter(Iter&& iter) {
-			pgid=iter.pgid; slotid=iter.slotid; tree=iter.tree;
+			page=std::move(iter.page); slotid=iter.slotid; tree=iter.tree;
 			//DEBUG
 		}
 		Iter& operator=(Iter&& iter) {
-			pgid=iter.pgid; slotid=iter.slotid; tree=iter.tree;
+			page=std::move(iter.page); slotid=iter.slotid; tree=iter.tree;
 			return *this;
 			//DEBUG
 		}
 		// Returns an optional key-value pair. The first std::string_view is the key
 		// and the second std::string_view is the value.
 		std::optional<std::pair<std::string_view, std::string_view>> Cur() {
-			if(!pgid) return std::nullopt;
-			auto slot=LeafSlotParse(tree->GetLeafPage(pgid).Slot(slotid));
+			if(!page.has_value()) return std::nullopt;
+			auto slot=LeafSlotParse(page.value().Slot(slotid));
 			return std::pair<std::string_view, std::string_view>(slot.key,slot.value);
 			//DEBUG
 		}
 		void Next() {
-			if(!pgid) return ;
-			auto page=tree->GetLeafPage(pgid);
-			if(slotid+1<page.SlotNum()) slotid++;
-			else{ slotid=0; pgid=tree->GetLeafNext(page); }
+			if(!page.has_value()) return ;
+			if(slotid+1<page.value().SlotNum()) slotid++;
+			else{ slotid=0; set_page(tree->GetLeafNext(page.value())); }
 			// DEBUG
 		}
-		Iter(pgid_t p,slotid_t s,BPlusTree *t):pgid(p),slotid(s),tree(t){}
+		Iter(pgid_t p,slotid_t s,BPlusTree *t):slotid(s),tree(t){ set_page(p); }
+		Iter(LeafPage p,slotid_t s,BPlusTree *t):page(std::move(p)),slotid(s),tree(t){ }
 	 private:
-		pgid_t pgid; slotid_t slotid; BPlusTree *tree;
+	 	void set_page(pgid_t id){ if(!id) page.reset(); else page=std::move(tree->GetLeafPage(id)); }
+		std::optional<LeafPage> page; slotid_t slotid; BPlusTree *tree;
 		// DEBUG
 	};
 	BPlusTree(const Self&) = delete;
@@ -195,7 +196,17 @@ class BPlusTree {
 		return road;
 		// DEBUG
 	}
-	LeafPage access_leaf(std::string_view key){ return GetLeafPage(access(key).back()); }
+	LeafPage access_leaf(std::string_view key)
+	{
+		int n=LevelNum(); pgid_t id=Root();
+		for(uint8_t l=1;l<=n;l++)
+		{
+			InnerPage x=GetInnerPage(id);
+			slotid_t s=x.UpperBound(key);
+			id=(s==x.SlotNum()?GetInnerSpecial(x):InnerSlotParse(x.Slot(s)).next);
+		}
+		return GetLeafPage(id);
+	}
 	/* Insert only if the key does not exists.
 	 * Return whether the insertion is successful.
 	 */
@@ -336,7 +347,7 @@ class BPlusTree {
 	}
 	// Return an iterator that iterates from the first element.
 	Iter Begin() {
-		putchar('-');
+		// putchar('-');
 		if(IsEmpty()) return Iter(0,0,this);
 		pgid_t x=LevelNum()?SmallestLeaf(GetInnerPage(Root()),LevelNum()):Root();
 		return Iter(x,0,this);
@@ -345,19 +356,19 @@ class BPlusTree {
 	// Return an iterator that points to the tuple with the minimum key
 	// s.t. key >= "key" in argument
 	Iter LowerBound(std::string_view key) {
-		putchar('+');
+		// putchar('+');
 		if(IsEmpty()) return Iter(0,0,this);
 		LeafPage x=access_leaf(key); slotid_t s=x.LowerBound(key);
-		return s==x.SlotNum()?Iter(GetLeafNext(x),0,this):Iter(x.ID(),s,this);
+		return s==x.SlotNum()?Iter(GetLeafNext(x),0,this):Iter(std::move(x),s,this);
 		// DEBUG
 	}
 	// Return an iterator that points to the tuple with the minimum key
 	// s.t. key > "key" in argument
 	Iter UpperBound(std::string_view key) {
-		putchar('*');
+		// putchar('*');
 		if(IsEmpty()) return Iter(0,0,this);
 		LeafPage x=access_leaf(key); slotid_t s=x.UpperBound(key);
-		return s==x.SlotNum()?Iter(GetLeafNext(x),0,this):Iter(x.ID(),s,this);
+		return s==x.SlotNum()?Iter(GetLeafNext(x),0,this):Iter(std::move(x),s,this);
 		// DEBUG
 	}
 	size_t TupleNum() {

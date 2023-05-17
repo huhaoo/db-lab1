@@ -73,6 +73,7 @@ std::unique_ptr<Executor> ExecutorGenerator::Generate(
     if (!table_schema_index) {
       throw DBException("Cannot find table \'{}\'", rangescan_plan->table_name_);
     }
+    // putchar('/');
     return std::make_unique<SeqScanExecutor>(
         db.GetRangeIterator(txn_id, rangescan_plan->table_name_,convert_bound_from_pair_to_tuple(rangescan_plan->range_l_),convert_bound_from_pair_to_tuple(rangescan_plan->range_r_)),
         rangescan_plan->predicate_.GenExpr(), rangescan_plan->output_schema_);

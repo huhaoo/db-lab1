@@ -13,6 +13,9 @@
 #include "parser/parser.hpp"
 #include "plan/optimizer.hpp"
 #include "type/tuple.hpp"
+#include "functions/functions.hpp"
+
+#define print_log printf("Running on line %d at file \"%s\"\n",__LINE__,__FILE__),fflush(stdout)
 
 namespace wing {
 
@@ -233,8 +236,35 @@ class Instance::Impl {
 
   // Refresh statistics.
   void Analyze(std::string_view table_name) {
-    // TODO...
-    throw DBException("Not implemented!");
+    auto index=db_.GetDBSchema().Find(table_name);
+    if (!index.has_value()) throw DBException("Analyze error: table \'{}\' doesn't exist.", table_name);
+    auto&tab=db_.GetDBSchema()[index.value()];
+    // First use a 'select * from table_name' to read all data
+    auto ret=parser_.Parse(fmt::format("select * from {};", table_name),db_.GetDBSchema());
+    auto exe=GenerateExecutor(ret.GetPlan()->clone(), 0, false);
+    exe.first->Init();// You should use something to calculate statistics.
+
+    size_t size=0;
+    std::vector<Field> max,min;
+    std::vector<double> dist;
+    std::vector<CountMinSketch> cms(tab.Size());
+    std::vector<HyperLL> hll(tab.Size());
+    for(auto ret=exe.first->Next(); ret; ret=exe.first->Next())
+    {
+      std::vector<Field> v=convert_to_field_vector((const StaticFieldRef*)ret.Data(),tab);
+      assert(v.size()==tab.Size());
+      if(max.empty()) max=min=v;
+      else for(size_t i=0;i<v.size();i++){ if(v[i]>max[i]) max[i]=v[i]; if(v[i]<min[i]) min[i]=v[i]; }
+			for(size_t i=0;i<v.size();i++)
+			{
+				cms[i].AddCount(v[i].ToString());
+				hll[i].Add(v[i].ToString());
+			}
+			size++;
+    }
+		for(auto i:hll) dist.push_back(i.GetDistinctCounts()/size);
+    db_.UpdateStats(table_name, TableStatistics(size,std::move(max),std::move(min),std::move(dist),std::move(cms)));
+
   }
 
  private:

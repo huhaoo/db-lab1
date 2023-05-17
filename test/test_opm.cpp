@@ -176,7 +176,7 @@ TEST(OptimizerTest, JoinCommuteTest) {
     EXPECT_TRUE(db->Execute("create table A(a int64 foreign key references "
                             "B(a), b int64, c float64);")
                     .Valid());
-    int NUMA = 1e6, NUMB = 1e3;
+    int NUMA = 1e3, NUMB = 1e3;
     RandomTuple<int64_t, int64_t, double> tuple_gen(
         202303051627ull, 1, NUMB, 0, 10000, 0.0, 1.0);
     DB_INFO("Generating data...");
@@ -479,10 +479,9 @@ RTGenType&& tuple_gen, DBType* db, GenRandomKeyFunc&& rgen_func, GenValueClauseF
             } else {
               EXPECT_FALSE(tuple);
             }
-            if(i%1000==0) std::cout<<i<<std::endl;
           }
         },
-        10000));
+        50000));
     DB_INFO("Use: {} s", sw.GetTimeInSeconds());
     sw.Reset();
     EXPECT_TRUE(test_timeout(

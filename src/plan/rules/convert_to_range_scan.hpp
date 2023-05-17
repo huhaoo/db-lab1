@@ -13,6 +13,7 @@ public:
 	{
 		if(node->type_==PlanType::SeqScan)
 		{
+			return true;
 			SeqScanPlanNode *Node=(SeqScanPlanNode*)node;
 			const std::string &table_name=Node->table_name_;
 			auto r=get_bound(Node->predicate_,get_pk_from_table_name(db,table_name));

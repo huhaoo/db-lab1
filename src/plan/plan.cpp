@@ -930,8 +930,9 @@ std::string SeqScanPlanNode::ToString() const {
 }
 
 std::string JoinPlanNode::ToString() const {
-  return fmt::format("Join [Predicate: {}] \n  -> {}\n  -> {}",
-      predicate_.ToString(), AddSpacesAfterNewLine(ch_->ToString(), 4),
+  return fmt::format("Join [Predicate: {}] , bit table: {} \n  -> {}\n  -> {}",
+      predicate_.ToString(), table_bitset_.ToString(),
+      AddSpacesAfterNewLine(ch_->ToString(), 4),
       AddSpacesAfterNewLine(ch2_->ToString(), 4));
 }
 
@@ -1018,10 +1019,10 @@ std::string DistinctPlanNode::ToString() const {
 
 std::string RangeScanPlanNode::ToString() const {
   return fmt::format(
-      "Range Scan [Table: {}] [Range: {}{}, {}{} ] [Predicate: {}]",
+      "Range Scan [Table: {}] [Range: {}{}, {}{} ] [Predicate: {}] , bit table: {}",
       table_name_, range_l_.second ? "[" : "(", range_l_.first.ToString(),
       range_r_.first.ToString(), range_r_.second ? "]" : ")",
-      predicate_.ToString());
+      predicate_.ToString(),table_bitset_.ToString());
 }
 
 std::unique_ptr<PlanNode> ProjectPlanNode::clone() const {

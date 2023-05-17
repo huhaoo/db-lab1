@@ -27,23 +27,26 @@ class ConvertToHashJoinRule : public OptRule {
   bool Match(const PlanNode* node) {
     if (node->type_ == PlanType::Join) {
       auto t_node = static_cast<const JoinPlanNode*>(node);
-      for (auto& a : t_node->predicate_.GetVec()) {
-        if (a.expr_->op_ == OpType::EQ) {
-          if (!a.CheckRight(t_node->ch_->table_bitset_) &&
-              !a.CheckLeft(t_node->ch2_->table_bitset_) &&
-              a.CheckRight(t_node->ch2_->table_bitset_) &&
-              a.CheckLeft(t_node->ch_->table_bitset_)) {
-            return true;
-          }
-          if (!a.CheckLeft(t_node->ch_->table_bitset_) &&
-              !a.CheckRight(t_node->ch2_->table_bitset_) &&
-              a.CheckRight(t_node->ch_->table_bitset_) &&
-              a.CheckLeft(t_node->ch2_->table_bitset_)) {
-            return true;
-          }
+      return Check(t_node->ch_.get(),t_node->ch2_.get(),t_node->predicate_);
+    }
+    return false;
+  }
+  bool Check(const PlanNode* c1,const PlanNode* c2,const PredicateVec &pred) {
+    for (auto& a : pred.GetVec()) {
+      if (a.expr_->op_ == OpType::EQ) {
+        if (!a.CheckRight(c1->table_bitset_) &&
+            !a.CheckLeft(c2->table_bitset_) &&
+            a.CheckRight(c2->table_bitset_) &&
+            a.CheckLeft(c1->table_bitset_)) {
+          return true;
+        }
+        if (!a.CheckLeft(c1->table_bitset_) &&
+            !a.CheckRight(c2->table_bitset_) &&
+            a.CheckRight(c1->table_bitset_) &&
+            a.CheckLeft(c2->table_bitset_)) {
+          return true;
         }
       }
-      return false;
     }
     return false;
   }

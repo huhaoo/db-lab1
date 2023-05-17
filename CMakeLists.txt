@@ -58,7 +58,7 @@ endif()
 add_compile_options("-Wall" "-march=native")
 
 # Address Sanitizer can only be enabled in Debug mode
-option(ASAN "Use Address Sanitizer" ON)
+# option(ASAN "Use Address Sanitizer" ON)
 if (ASAN)
   string( TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER )
   if (CMAKE_BUILD_TYPE_LOWER STREQUAL "debug")

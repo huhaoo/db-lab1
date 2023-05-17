@@ -189,12 +189,12 @@ class PredicateVec {
     }
   }
   void swap(PredicateVec &a){ vec_.swap(a.vec_); }
- private:
   static std::unique_ptr<BinaryConditionExpr> _trans(std::unique_ptr<Expr> e) {
     auto ret = static_cast<BinaryConditionExpr*>(e.get());
     e.release();
     return std::unique_ptr<BinaryConditionExpr>(ret);
   }
+ private:
   std::vector<PredicateElement> vec_;
 };
 

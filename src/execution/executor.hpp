@@ -9,6 +9,7 @@
 #include "plan/plan.hpp"
 #include "storage/storage.hpp"
 #include "common/murmurhash.hpp"
+#include <iostream>
 
 #define print_log printf("Running on line %d at file \"%s\"\n",__LINE__,__FILE__),fflush(stdout)
 
@@ -94,7 +95,7 @@ class naive_hash
     return wing::utils::Hash(e.first.Evaluate(in).ReadStringView(),sed);
   }
 public:
-  uint64_t hash(InputTuplePtr in,std::vector<std::pair<ExprFunction,RetType>> e){ if(e.size()==1&&e[0].second==RetType::INT) return e[0].first.Evaluate(in).ReadInt(); uint64_t ret=sed; for(auto i:e) ret=hash_(in,i,ret); return ret; }
+  uint64_t hash(InputTuplePtr in,std::vector<std::pair<ExprFunction,RetType>> e){ if(e.empty()) return 0; if(e.size()==1&&e[0].second==RetType::INT) return e[0].first.Evaluate(in).ReadInt(); uint64_t ret=sed; for(auto i:e) ret=hash_(in,i,ret); return ret; }
 };
 class HashJoinExecutor:public NestloopJoinExecutor,public naive_hash
 {
@@ -147,6 +148,7 @@ class HashAggregateExecutor:public Executor,public naive_hash
     InputTuplePtr v;
     while((v=e->Next()))
     {
+      input_size++;
       t.Append(v.Data()); StaticFieldRef* v=(StaticFieldRef*)t.GetPointerVec().back();
       std::vector<size_t> &H=h[hash(v,ge)]; int id=-1;
       for(auto i:H) if(in_same_group(ge,v,a[i].first)) id=i;
@@ -166,6 +168,7 @@ class HashAggregateExecutor:public Executor,public naive_hash
         if(_gc) gc.Aggregate(a[id].second.back(),v);
       }
     }
+    std::cout<<"Init finished, input size="<<input_size<<std::endl;
     ptr=0;
   }
   InputTuplePtr Next()override
@@ -181,6 +184,8 @@ class HashAggregateExecutor:public Executor,public naive_hash
     }
   }
 private:
+  size_t input_size=0;
+
   OutputSchema is,os; // Input/Output Schema
   AggregateExprFunction gc; // Group Checker
   bool _gc;
