@@ -111,16 +111,12 @@ class BPlusTree {
 		// and the second std::string_view is the value.
 		std::optional<std::pair<std::string_view, std::string_view>> Cur() {
 			if(!page.has_value()) return std::nullopt;
+			if(slotid==page.value().SlotNum()){ slotid=0; set_page(tree->GetLeafNext(page.value())); if(!page.has_value()) return std::nullopt; }
 			auto slot=LeafSlotParse(page.value().Slot(slotid));
 			return std::pair<std::string_view, std::string_view>(slot.key,slot.value);
 			//DEBUG
 		}
-		void Next() {
-			if(!page.has_value()) return ;
-			if(slotid+1<page.value().SlotNum()) slotid++;
-			else{ slotid=0; set_page(tree->GetLeafNext(page.value())); }
-			// DEBUG
-		}
+		void Next(){ slotid++; }
 		Iter(pgid_t p,slotid_t s,BPlusTree *t):slotid(s),tree(t){ set_page(p); }
 		Iter(LeafPage p,slotid_t s,BPlusTree *t):page(std::move(p)),slotid(s),tree(t){ }
 	 private:
@@ -220,15 +216,14 @@ class BPlusTree {
 		IncreaseTupleNum(1);
 		// Check insertable
 
-		char *c=new char[W]; size_t size=LeafSlotSerialize(c,LeafSlot{key,value}); std::string_view slot(c,size);
+		static char *C1=new char[W],*C2=new char[W];
+		char *c=C1; size_t size=LeafSlotSerialize(c,LeafSlot{key,value}); std::string_view slot(c,size);
 		if(x.IsInsertable(slot))
 		{
 			x.InsertBeforeSlot(x.UpperBound(key),slot);
-			delete[] c;
 			return true;
 		}
 		LeafPage right=AllocLeafPage(); x.SplitInsert(right,slot,x.UpperBound(key));
-		delete[] c;
 		// Insert into the leaf
 
 		int m=n-1; pgid_t right_next=right.ID(),left_next; std::string_view right_min=LeafSmallestKey(right),right_upper;
@@ -242,29 +237,29 @@ class BPlusTree {
 			if(p==x.SlotNum())
 			{
 				left_next=GetInnerSpecial(x); SetInnerSpecial(x,right_next);
-				char *c=new char[W]; size_t size=InnerSlotSerialize(c,InnerSlot{left_next,right_min}); std::string_view slot(c,size);
+				char *c=C1; size_t size=InnerSlotSerialize(c,InnerSlot{left_next,right_min}); std::string_view slot(c,size);
 				if(x.IsInsertable(slot))
 				{
-					x.InsertBeforeSlot(p,slot); delete[] c;
+					x.InsertBeforeSlot(p,slot);
 					return true;
 				}
-				InnerPage right=AllocInnerPage(); x.SplitInsert(right,slot,p); right_next=right.ID(); right_min=InnerSmallestKey(right,n-m); delete[] c;
+				InnerPage right=AllocInnerPage(); x.SplitInsert(right,slot,p); right_next=right.ID(); right_min=InnerSmallestKey(right,n-m);
 				SetInnerSpecial(right,GetInnerSpecial(x)); SetInnerSpecial(x,InnerSlotParse(x.Slot(x.SlotNum()-1)).next); x.SlotNumMut()--;
 				m--;
 			}
 			else
 			{
 				left_next=InnerSlotParse(x.Slot(p)).next; right_upper=InnerSlotParse(x.Slot(p)).strict_upper_bound;
-				char *c1=new char[W],*c2=new char[W];
+				char *c1=C1,*c2=C2;
 				size_t size1=InnerSlotSerialize(c1,{left_next,right_min}),size2=InnerSlotSerialize(c2,{right_next,right_upper});
 				std::string_view slot1(c1,size1),slot2(c2,size2);
 				x.DeleteSlot(p); x.InsertBeforeSlot(p,slot2);
 				if(x.IsInsertable(slot1))
 				{
-					x.InsertBeforeSlot(p,slot1); delete[] c1; delete[] c2;
+					x.InsertBeforeSlot(p,slot1);
 					return true;
 				}
-				InnerPage right=AllocInnerPage(); x.SplitInsert(right,slot1,p); right_next=right.ID(); right_min=InnerSmallestKey(right,n-m); delete[] c1; delete[] c2;
+				InnerPage right=AllocInnerPage(); x.SplitInsert(right,slot1,p); right_next=right.ID(); right_min=InnerSmallestKey(right,n-m);
 				SetInnerSpecial(right,GetInnerSpecial(x)); SetInnerSpecial(x,InnerSlotParse(x.Slot(x.SlotNum()-1)).next); x.SlotNumMut()--;
 				m--;
 			}
@@ -356,7 +351,6 @@ class BPlusTree {
 	// Return an iterator that points to the tuple with the minimum key
 	// s.t. key >= "key" in argument
 	Iter LowerBound(std::string_view key) {
-		// putchar('+');
 		if(IsEmpty()) return Iter(0,0,this);
 		LeafPage x=access_leaf(key); slotid_t s=x.LowerBound(key);
 		return s==x.SlotNum()?Iter(GetLeafNext(x),0,this):Iter(std::move(x),s,this);

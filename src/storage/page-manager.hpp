@@ -269,19 +269,18 @@ public:
 	 *  will be the slot 5, and so on.
 	 * Return succeed or not.
 	 */
-	inline bool InsertBeforeSlot(slotid_t slotid, std::string_view slot) {
-		if(!IsInsertable(slot)) return false;
-		//   printf("+ %d %s   %d\n",slotid,slot.data()+2,SlotNum());
-		std::vector<std::string> slots;
-		while(SlotNum()>slotid){ slots.push_back(std::string(Slot(SlotNum()-1))); SlotNumMut()--; }
-		slots.push_back(std::string(slot));
-		//   printf(" "); for(size_t i=0;i<slots.size();i++) printf(" \"%s\"",slots[i].data()+2);; putchar(10);
-		while(!slots.empty()){ AppendSlotUnchecked(slots.back()); slots.pop_back(); }
-		//   printf("  %d ",SlotNum()); for(slotid_t i=0;i<SlotNum();i++) printf(" \"%s\"",Slot(i).data()+2);; putchar(10);
-		return true;
-		// TODO: can be faster
-		// DEBUG
-	}
+    inline bool InsertBeforeSlot(slotid_t slotid, std::string_view slot) {
+        if(!IsInsertable(slot)) return false;
+        slotid_t n=SlotNum();
+        memcpy(page_+Starts()[n-1]-slot.size(),page_+Starts()[n-1],Ends()[slotid]-Starts()[n-1]);
+        memcpy(page_+Ends()[slotid]-slot.size(),(char*)slot.data(),slot.size());
+
+        SlotNumMut()++;
+        for(slotid_t i=n;i!=slotid;i--) StartsMut()[i]=Starts()[i-1]-slot.size();
+        StartsMut()[slotid]=Ends()[slotid]-slot.size();
+        return true;
+        // DEBUG
+    }
 	/* Logically equivalent to inserting the slot before the given slot, and then
 	 *  split the right half of the overflowed page into the empty page "right".
 	 * right: an empty page to accommodate the right half of the overflowed page.
