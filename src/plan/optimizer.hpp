@@ -35,6 +35,7 @@ class CostBasedOptimizer_ {
  private:
   void find_scan_node(PlanNode*);
   void dp();
+  void print(int,int);
   std::unique_ptr<PlanNode> plan; DB& db;
   int n; // number of scan node;
   std::vector<PlanNode*> scan; // the scan nodes
@@ -44,6 +45,7 @@ class CostBasedOptimizer_ {
   std::vector<std::unique_ptr<PlanNode> > plan_; // The best plan
   std::vector<double> cost; // the estimate cost of the plan of S
   std::vector<CardEstimator::Summary> summary; // the estimate info
+  std::vector<int> split_point; // the estimate info
 };
 
 }  // namespace wing

@@ -6,6 +6,7 @@
 #include "plan/cost_model.hpp"
 
 #include <iostream>
+#define print_log printf("Running on line %d at file \"%s\"\n",__LINE__,__FILE__),fflush(stdout)
 
 namespace wing {
 
@@ -142,7 +143,7 @@ void CostBasedOptimizer_::dp()
       double _C=cost[j]+cost[i-j]+(ConvertToHashJoinRule().Check(plan_[j].get(),plan_[i-j].get(),pred)?CostCalculator::HashJoinCost:CostCalculator::NestloopJoinCost)(summary[j].size_,summary[i-j].size_);
       if(C>_C||C<0){ C=_C; J=j; }
     }
-    cost[i]=C; summary[i]=CardEstimator::EstimateJoinEq(_pred,summary[J],summary[i-J]);
+    split_point[i]=J; cost[i]=C; summary[i]=CardEstimator::EstimateJoinEq(_pred,summary[J],summary[i-J]);
     JoinPlanNode *p=new JoinPlanNode;
     p->ch_=plan_[J]->clone(); p->ch2_=plan_[i-J]->clone(); p->table_bitset_=bitvec[i];
     p->output_schema_.Append(p->ch_->output_schema_); p->output_schema_.Append(p->ch2_->output_schema_);
@@ -152,11 +153,42 @@ void CostBasedOptimizer_::dp()
 std::unique_ptr<PlanNode> CostBasedOptimizer_::solve()
 {
   if(n) return plan->clone();
-  // std::cout<<plan->ToString()<<std::endl;
   assert(CheckCondition(plan.get(),db));
   find_scan_node(plan.get());
-  // std::cout<<plan->ToString()<<std::endl; printf("%d\n",n); for(auto i:scan) std::cout<<i->ToString()<<std::endl; std::cout<<pred.ToString()<<std::endl;
-  bitvec.resize(1<<n); plan_.resize(1<<n); cost.resize(1<<n); summary.resize(1<<n);
+  // std::cout<<pred.ToString()<<std::endl;
+  while(true)
+  {
+    for(const auto &i:pred.GetVec()) if(i.expr_->op_==OpType::EQ&&i.expr_->ch0_->type_==ExprType::COLUMN&&i.expr_->ch1_->type_==ExprType::COLUMN)
+    {
+      ColumnExpr *a=(ColumnExpr*)(i.expr_->ch0_.get()),*b=(ColumnExpr *)(i.expr_->ch1_.get()); 
+      for(const auto &j:pred.GetVec()) if(j.expr_->op_==OpType::EQ&&j.expr_->ch0_->type_==ExprType::COLUMN&&j.expr_->ch1_->type_==ExprType::COLUMN)
+      {
+        ColumnExpr *c=(ColumnExpr*)(j.expr_->ch0_.get()),*d=(ColumnExpr *)(j.expr_->ch1_.get());
+        if(a->id_in_column_name_table_==d->id_in_column_name_table_){ std::swap(a,b); std::swap(c,d); }
+        else if(a->id_in_column_name_table_==c->id_in_column_name_table_) std::swap(a,b);
+        else if(b->id_in_column_name_table_==d->id_in_column_name_table_) std::swap(c,d);
+        if(b->id_in_column_name_table_!=c->id_in_column_name_table_||a->id_in_column_name_table_==d->id_in_column_name_table_) continue;
+        int flag=0;
+        for(const auto &k:pred.GetVec()) if(k.expr_->op_==OpType::EQ&&k.expr_->ch0_->type_==ExprType::COLUMN&&k.expr_->ch1_->type_==ExprType::COLUMN)
+        {
+          ColumnExpr *e=(ColumnExpr*)(k.expr_->ch0_.get()),*f=(ColumnExpr *)(k.expr_->ch1_.get());
+          if(a->id_in_column_name_table_==f->id_in_column_name_table_) std::swap(e,f);
+          if(a->id_in_column_name_table_!=e->id_in_column_name_table_||d->id_in_column_name_table_!=f->id_in_column_name_table_) continue;
+          flag=1;
+        }
+        if(!flag)
+        {
+          BinaryConditionExpr expr(OpType::EQ,a->clone(),d->clone());
+          pred.Append(PredicateVec::Create(&expr));
+          goto label1;
+        }
+      }
+    }
+    break;
+    label1:;
+  }
+  // std::cout<<pred.ToString()<<std::endl;
+  bitvec.resize(1<<n); plan_.resize(1<<n); cost.resize(1<<n); summary.resize(1<<n); split_point.resize(1<<n);
   dp();
   plan->ch_=std::move(plan_[(1<<n)-1]->clone());
   (plan->ch_->type_==PlanType::Join     ?((JoinPlanNode*)     (plan->ch_).get())->predicate_:
@@ -167,10 +199,18 @@ std::unique_ptr<PlanNode> CostBasedOptimizer_::solve()
   std::vector<std::unique_ptr<OptRule>> R;
   R.push_back(std::make_unique<ConvertToHashJoinRule>());
   plan = Apply(std::move(plan), R, db);
-  // for(int i=0;i<n;i++) printf("%.6lf ",summary[1<<i].size_); putchar(10);
-  // printf("Expect size: %.6lf\n",summary[(1<<n)-1].size_); std::cout<<plan->ToString()<<std::endl<<std::endl;
+  // print((1<<n)-1,0);
+  std::cout<<plan->ToString()<<std::endl<<std::endl;
 
   return plan->clone();
+}
+
+void CostBasedOptimizer_::print(int S,int prefix)
+{
+  printf("%s%.6lf\n",std::string(prefix,' ').c_str(),summary[S].size_);
+  if(!split_point[S]) return;
+  print(split_point[S],prefix+4);
+  print(S-split_point[S],prefix+4);
 }
 
 }  // namespace wing

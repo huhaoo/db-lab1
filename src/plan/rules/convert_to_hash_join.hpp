@@ -61,12 +61,14 @@ class ConvertToHashJoinRule : public OptRule {
             a.CheckLeft(t_node->ch_->table_bitset_)) {
           ret->left_hash_exprs_.push_back(a.expr_->ch0_->clone());
           ret->right_hash_exprs_.push_back(a.expr_->ch1_->clone());
+          continue;
         } else if (!a.CheckLeft(t_node->ch_->table_bitset_) &&
                    !a.CheckRight(t_node->ch2_->table_bitset_) &&
                    a.CheckRight(t_node->ch_->table_bitset_) &&
                    a.CheckLeft(t_node->ch2_->table_bitset_)) {
           ret->right_hash_exprs_.push_back(a.expr_->ch0_->clone());
           ret->left_hash_exprs_.push_back(a.expr_->ch1_->clone());
+          continue;
         }
       }
       ret->predicate_.Append(std::move(a));

@@ -97,19 +97,20 @@ class CardEstimator {
     const Summary& probe
   ) {
     Summary ret;
-    ret.distinct_rate_=build.distinct_rate_; for(auto i:probe.distinct_rate_) ret.distinct_rate_.push_back(i);; ret.size_=build.size_*probe.size_;
+    ret.distinct_rate_=build.distinct_rate_;
     std::map<int,double> b(build.distinct_rate_.begin(),build.distinct_rate_.end()),p(probe.distinct_rate_.begin(),probe.distinct_rate_.end());
-    double rate=1;
+    ret.size_=build.size_*probe.size_;
     for(const auto &i:predicates.GetVec())
       if(i.expr_->op_==OpType::EQ&&i.expr_->ch0_->type_==ExprType::COLUMN&&i.expr_->ch1_->type_==ExprType::COLUMN)
       {
         ColumnExpr *ch0=(ColumnExpr*)(i.expr_->ch0_.get()),*ch1=(ColumnExpr*)(i.expr_->ch1_.get());
         int id0=ch0->id_in_column_name_table_,id1=ch1->id_in_column_name_table_;
-        if(b.count(id0)&&p.count(id1)){ rate=std::max({rate,build.size_*b[id0],probe.size_*p[id1]}); }
-        else if(p.count(id0)&&b.count(id1)){ rate=std::max({rate,build.size_*b[id1],probe.size_*p[id0]}); }
+        if(b.count(id0)&&p.count(id1))     { ret.size_/=std::max(build.size_*b[id0],probe.size_*p[id1]); b[id0]*=p[id1]; p.erase(id1); }
+        else if(p.count(id0)&&b.count(id1)){ ret.size_/=std::max(build.size_*b[id1],probe.size_*p[id0]); b[id1]*=p[id0]; p.erase(id0); }
       }
-    ret.size_/=rate;
-    ret.size_=std::max(ret.size_,(double)10);
+    ret.distinct_rate_.insert(ret.distinct_rate_.end(),b.begin(),b.end());
+    ret.distinct_rate_.insert(ret.distinct_rate_.end(),p.begin(),p.end());
+    ret.size_=std::max(ret.size_,pow(build.size_*probe.size_,0.5));
     return ret;
   }
 };

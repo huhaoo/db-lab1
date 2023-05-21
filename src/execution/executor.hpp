@@ -57,7 +57,7 @@ class NestloopJoinExecutor:public Executor
     {
       if(!v2)
       {
-        // if(output_size){ printf("Join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
+        if(output_size){ printf("Join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
         return v2;
       }
       if(p==t.GetPointerVec().size()){ p=0; v2=c2->Next(); continue; } v1=t.GetPointerVec()[p++];
@@ -87,21 +87,22 @@ private:
 class naive_hash
 {
   static const uint64_t sed=0x1a2b3c4d5e6fllu;
-  uint64_t hash_(InputTuplePtr in,std::pair<ExprFunction,RetType> e,uint64_t sed)
+  inline uint64_t hash_int(uint64_t sed){ sed = (sed+0xfd7046c5) + (sed<<3); sed = (sed+0xfd7046c5) + (sed>>3); sed = (sed^0xb55a4f09) ^ (sed<<16); sed = (sed^0xb55a4f09) ^ (sed>>16); return sed; }
+  inline uint64_t hash_(InputTuplePtr in,std::pair<ExprFunction,RetType> e,uint64_t sed)
   {
     //assert(e.second!=RetType::FLOAT);
-    if(e.second==RetType::INT)
-    {
-      sed = (sed+0xfd7046c5) + (sed<<3);
-      sed = (sed+0xfd7046c5) + (sed>>3);
-      sed = (sed^0xb55a4f09) ^ (sed<<16);
-      sed = (sed^0xb55a4f09) ^ (sed>>16);
-      return sed+e.first.Evaluate(in).ReadInt();
-    }
+    if(e.second==RetType::INT) return hash_int(sed)+e.first.Evaluate(in).ReadInt();
     return wing::utils::Hash(e.first.Evaluate(in).ReadStringView(),sed);
   }
 public:
-  uint64_t hash(InputTuplePtr in,std::vector<std::pair<ExprFunction,RetType>> e){ if(e.empty()) return 0; if(e.size()==1&&e[0].second==RetType::INT) return e[0].first.Evaluate(in).ReadInt(); uint64_t ret=sed; for(auto i:e) ret=hash_(in,i,ret); return ret; }
+  uint64_t hash(InputTuplePtr in,std::vector<std::pair<ExprFunction,RetType>> e)
+  {
+    if(e.empty()) return 0;
+    if(e.size()==1&&e[0].second==RetType::INT) return e[0].first.Evaluate(in).ReadInt();
+    if(e.size()==2&&e[0].second==RetType::INT&&e[1].second==RetType::INT) return hash_int(e[0].first.Evaluate(in).ReadInt())+e[1].first.Evaluate(in).ReadInt();
+    if(e.size()==3&&e[0].second==RetType::INT&&e[1].second==RetType::INT&&e[2].second==RetType::INT) return hash_int(hash_int(e[0].first.Evaluate(in).ReadInt())+e[1].first.Evaluate(in).ReadInt())+e[2].first.Evaluate(in).ReadInt();
+    uint64_t ret=sed; for(auto i:e) ret=hash_(in,i,ret); return ret;
+  }
 };
 class HashJoinExecutor:public NestloopJoinExecutor,public naive_hash
 {
@@ -117,15 +118,17 @@ class HashJoinExecutor:public NestloopJoinExecutor,public naive_hash
       std::vector<uint64_t> H;
       std::vector<StaticFieldRef*> refs;
       read=true; while((v1=c1->Next())){ H.push_back(hash(v1,e1)); t.Append(v1.Data()); refs.push_back((StaticFieldRef*)t.GetPointerVec().back()); }
-      while(hash_map_size<H.size()) hash_map_size<<=1;; h.resize(hash_map_size);
-      for(size_t i=0;i<H.size();i++) h[H[i]%hash_map_size].push_back({H[i],refs[i]});
+      while(hash_map_size<H.size()) hash_map_size<<=1;; h.resize(hash_map_size); std::vector<size_t> map_size(hash_map_size); hash_map_size--;
+      for(size_t i=0;i<H.size();i++) map_size[H[i]&hash_map_size]++;
+      for(size_t i=0;i<hash_map_size;i++) h[i].reserve(map_size[i]);
+      for(size_t i=0;i<H.size();i++) h[H[i]&hash_map_size].push_back({H[i],refs[i]});
       Next2();
     }
     while(true)
     {
       if(!v2)
       {
-        // if(output_size){ printf("Hash join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
+        if(output_size){ printf("Hash join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
         return v2;
       }
       if(T==nullptr||p==T->size()){ Next2(); continue; } auto V1=(*T)[p++];
@@ -144,7 +147,7 @@ class HashJoinExecutor:public NestloopJoinExecutor,public naive_hash
   void Next2()
   {
     v2=c2->Next(); if(!v2){ T=nullptr; return; }
-    p=0; H2=hash(v2,e2); T=&h[H2%hash_map_size];
+    p=0; H2=hash(v2,e2); T=&h[H2&hash_map_size];
   }
 };
 
