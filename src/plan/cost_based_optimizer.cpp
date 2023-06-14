@@ -200,7 +200,7 @@ std::unique_ptr<PlanNode> CostBasedOptimizer_::solve()
   R.push_back(std::make_unique<ConvertToHashJoinRule>());
   plan = Apply(std::move(plan), R, db);
   // print((1<<n)-1,0);
-  std::cout<<plan->ToString()<<std::endl<<std::endl;
+  // std::cout<<plan->ToString()<<std::endl<<std::endl;
 
   return plan->clone();
 }

@@ -57,7 +57,7 @@ class NestloopJoinExecutor:public Executor
     {
       if(!v2)
       {
-        if(output_size){ printf("Join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
+        // if(output_size){ printf("Join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
         return v2;
       }
       if(p==t.GetPointerVec().size()){ p=0; v2=c2->Next(); continue; } v1=t.GetPointerVec()[p++];
@@ -128,7 +128,7 @@ class HashJoinExecutor:public NestloopJoinExecutor,public naive_hash
     {
       if(!v2)
       {
-        if(output_size){ printf("Hash join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
+        // if(output_size){ printf("Hash join finish, output size= %lu\n",output_size); fflush(stdout); output_size=0; }
         return v2;
       }
       if(T==nullptr||p==T->size()){ Next2(); continue; } auto V1=(*T)[p++];
