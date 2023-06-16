@@ -12,6 +12,8 @@
 #include "jit/jitexecutor.hpp"
 #include "parser/parser.hpp"
 #include "plan/optimizer.hpp"
+#include "transaction/txn.hpp"
+#include "transaction/txn_manager.hpp"
 #include "type/tuple.hpp"
 #include "functions/functions.hpp"
 
@@ -91,13 +93,19 @@ class Instance::Impl {
       }
       auto table_name = command.substr(c, cend - c);
       out << "Analyzing table " << table_name << std::endl;
+      Txn* txn = GetTxnManager().Begin();
       try {
-        Analyze(table_name);
+        Analyze(table_name, txn->txn_id_);
+        GetTxnManager().Commit(txn);
       } catch (const DBException& e) {
         err << fmt::format("DBException occurs. what(): {}\n", e.what())
             << "\n";
+        GetTxnManager().Abort(txn);
         return true;
       }
+      // CAUTION: TxnDLAbortException and MultiUpgradeException are not
+      // catched. In future, we should provide "Connection" abstraction to
+      // each instance, so CLI can also run concurrently.
       out << "Analyze completed successfully." << std::endl;
       return true;
     });
@@ -154,9 +162,10 @@ class Instance::Impl {
       if (!ret.Valid()) {
         err << ret.GetErrorMsg() << std::endl;
       } else {
+        Txn* txn = GetTxnManager().Begin();
         try {
           if (ret.GetPlan() == nullptr) {
-            ExecuteMetadataOperation(ret, 0);
+            ExecuteMetadataOperation(ret, txn->txn_id_);
             if (ret.GetAST()->type_ == StatementType::CREATE_TABLE) {
               out << "Create table successfully.\n";
             } else if (ret.GetAST()->type_ == StatementType::DROP_TABLE) {
@@ -164,8 +173,8 @@ class Instance::Impl {
             }
           } else {
             // Query
-            auto [exe, use_jit] = GenerateExecutor(ret.GetPlan()->clone(), 0,
-                ret.GetAST()->type_ == StatementType::SELECT);
+            auto [exe, use_jit] = GenerateExecutor(ret.GetPlan()->clone(),
+                txn->txn_id_, ret.GetAST()->type_ == StatementType::SELECT);
             err << fmt::format(
                 "Generate executor in {} seconds.\n", watch.GetTimeInSeconds());
             auto output_schema = ret.GetPlan()->output_schema_;
@@ -177,10 +186,15 @@ class Instance::Impl {
                 "Execute in {} seconds.\n", watch.GetTimeInSeconds());
             out << FormatOutputTable(result, output_schema) << std::endl;
           }
+          GetTxnManager().Commit(txn);
         } catch (const DBException& e) {
           err << fmt::format("DBException occurs. what(): {}\n", e.what())
               << "\n";
+          GetTxnManager().Abort(txn);
         }
+        // CAUTION: TxnDLAbortException and MultiUpgradeException are not
+        // catched. In future, we should provide "Connection" abstraction to
+        // each instance, so CLI can also run concurrently.
       }
       return true;
     });
@@ -190,8 +204,7 @@ class Instance::Impl {
     out << "Exiting Wing...\n";
   }
 
-  ResultSet Execute(std::string_view statement) {
-    auto txn_id = 0;
+  ResultSet Execute(std::string_view statement, txn_id_t txn_id) {
     auto ret = parser_.Parse(statement, db_.GetDBSchema());
     if (!ret.Valid()) {
       DB_INFO("{}", ret.GetErrorMsg());
@@ -235,7 +248,7 @@ class Instance::Impl {
   }
 
   // Refresh statistics.
-  void Analyze(std::string_view table_name) {
+  void Analyze(std::string_view table_name, txn_id_t txn_id) {
     auto index=db_.GetDBSchema().Find(table_name);
     if (!index.has_value()) throw DBException("Analyze error: table \'{}\' doesn't exist.", table_name);
     auto&tab=db_.GetDBSchema()[index.value()];
@@ -264,11 +277,13 @@ class Instance::Impl {
     }
 		for(auto i:hll) dist.push_back(i.GetDistinctCounts()/size);
     db_.UpdateStats(table_name, TableStatistics(size,std::move(max),std::move(min),std::move(dist),std::move(cms)));
-
+ 
   }
 
+  TxnManager& GetTxnManager() { return db_.GetTxnManager(); }
+
  private:
-  void CreateTable(const ParserResult& result, size_t txn_id) {
+  void CreateTable(const ParserResult& result, txn_id_t txn_id) {
     auto a = static_cast<const CreateTableStatement*>(result.GetAST().get());
     if (db_.GetDBSchema().Find(a->table_name_)) {
       throw DBException(
@@ -335,8 +350,9 @@ class Instance::Impl {
               FieldType::INT64, 8});
       col2.push_back(columns[primary_key_index]);
       auto col2_clone(col2);
-      db_.CreateTable(TableSchema(std::move(ref_table_name), std::move(col2),
-          std::move(col2_clone), 1, false, false, {}));
+      db_.CreateTable(
+          txn_id, TableSchema(std::move(ref_table_name), std::move(col2),
+                      std::move(col2_clone), 1, false, false, {}));
     } else {
       // Create a default primary key
       // use auto_increment.
@@ -355,12 +371,13 @@ class Instance::Impl {
           return (x.type_ == FieldType::CHAR || x.type_ == FieldType::VARCHAR) <
                  (y.type_ == FieldType::CHAR || y.type_ == FieldType::VARCHAR);
         });
-    db_.CreateTable(TableSchema(std::string(a->table_name_), std::move(columns),
-        std::move(storage_columns), primary_key_index, auto_gen_flag, hide_flag,
-        std::move(fk)));
+    db_.CreateTable(
+        txn_id, TableSchema(std::string(a->table_name_), std::move(columns),
+                    std::move(storage_columns), primary_key_index,
+                    auto_gen_flag, hide_flag, std::move(fk)));
   }
 
-  void DropTable(const ParserResult& result, size_t txn_id) {
+  void DropTable(const ParserResult& result, txn_id_t txn_id) {
     auto stmt = static_cast<const DropTableStatement*>(result.GetAST().get());
     auto index = db_.GetDBSchema().Find(stmt->table_name_);
     if (!index.has_value()) {
@@ -397,16 +414,16 @@ class Instance::Impl {
     }
     // Drop the refcounts table.
     if (!tab.GetHidePKFlag()) {
-      db_.DropTable(DB::GenRefTableName(stmt->table_name_));
+      db_.DropTable(txn_id, DB::GenRefTableName(stmt->table_name_));
     }
-    db_.DropTable(stmt->table_name_);
+    db_.DropTable(txn_id, stmt->table_name_);
   }
 
   /**
    * Execute metadata operation.
    * Metadata operation includes: create/drop table/index.
    */
-  void ExecuteMetadataOperation(const ParserResult& result, size_t txn_id) {
+  void ExecuteMetadataOperation(const ParserResult& result, txn_id_t txn_id) {
     if (result.GetAST()->type_ == StatementType::CREATE_TABLE) {
       CreateTable(result, txn_id);
     } else if (result.GetAST()->type_ == StatementType::DROP_TABLE) {
@@ -434,7 +451,7 @@ class Instance::Impl {
   // Generate executor by a logical plan.
   // This plan is released after executor is generated.
   std::pair<std::unique_ptr<Executor>, bool> GenerateExecutor(
-      std::unique_ptr<PlanNode> plan, size_t txn_id, bool use_jit) {
+      std::unique_ptr<PlanNode> plan, txn_id_t txn_id, bool use_jit) {
     std::unique_ptr<Executor> exe;
     if (!use_jit_flag_)
       use_jit = false;
@@ -550,14 +567,24 @@ Instance::Instance(std::string_view db_file, bool use_jit_flag) {
 }
 Instance::~Instance() {}
 ResultSet Instance::Execute(std::string_view statement) {
-  return ptr_->Execute(statement);
+  Txn* txn = ptr_->GetTxnManager().Begin();
+  auto res = ptr_->Execute(statement, txn->txn_id_);
+  ptr_->GetTxnManager().Commit(txn);
+  return res;
+}
+ResultSet Instance::Execute(std::string_view statement, txn_id_t txn_id) {
+  return ptr_->Execute(statement, txn_id);
 }
 void Instance::ExecuteShell() { ptr_->ExecuteShell(); }
 void Instance::Analyze(std::string_view table_name) {
-  ptr_->Analyze(table_name);
+  Txn* txn = ptr_->GetTxnManager().Begin();
+  ptr_->Analyze(table_name, txn->txn_id_);
+  ptr_->GetTxnManager().Commit(txn);
 }
 std::unique_ptr<PlanNode> Instance::GetPlan(std::string_view statement) {
   return ptr_->GetPlan(statement);
 }
+
+TxnManager& Instance::GetTxnManager() { return ptr_->GetTxnManager(); }
 
 }  // namespace wing

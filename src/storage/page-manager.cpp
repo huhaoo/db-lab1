@@ -1,5 +1,7 @@
 #include "page-manager.hpp"
 #include "common/logging.hpp"
+#include <memory>
+#include <mutex>
 
 namespace wing {
 
@@ -77,7 +79,7 @@ auto PageManager::Open(
   return pgm;
 }
 
-pgid_t PageManager::Allocate() {
+pgid_t PageManager::__Allocate() {
   if (free_list_buf_used_ == 0) {
     if (free_list_buf_standby_full_) {
       std::swap(free_list_buf_, free_list_buf_standby_);
@@ -104,8 +106,24 @@ pgid_t PageManager::Allocate() {
     return free_list_buf_[--free_list_buf_used_];
   }
 }
+pgid_t PageManager::Allocate() {
+  std::lock_guard l(latch_);
+  pgid_t ret = __Allocate();
+  assert(ret <= is_free_.size());
+  if (ret == is_free_.size()) {
+    is_free_.push_back(false);
+  } else {
+    assert(is_free_[ret] == true);
+    is_free_[ret] = false;
+  }
+  return ret;
+}
 
 void PageManager::Free(pgid_t pgid) {
+  std::lock_guard l(latch_);
+  if (is_free_[pgid])
+    DB_ERR("Internal error: Double free of page {}\n", pgid);
+  is_free_[pgid] = true;
   eviction_policy_.Remove(pgid);
   auto it = buf_.find(pgid);
   if (it != buf_.end()) {
@@ -254,6 +272,7 @@ Page PageManager::GetPage(pgid_t pgid) {
 	return Page(pgid, buf, *this, false);
 }
 void PageManager::DropPage(pgid_t pgid, bool dirty) {
+  std::lock_guard l(latch_);
   assert(pgid != 0);
   auto it = buf_.find(pgid);
   assert(it != buf_.end());

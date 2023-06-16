@@ -18,7 +18,7 @@
 namespace wing {
 
 std::unique_ptr<Executor> ExecutorGenerator::Generate(
-    const PlanNode* plan, DB& db, size_t txn_id) {
+    const PlanNode* plan, DB& db, txn_id_t txn_id) {
   if (plan == nullptr) {
     throw DBException("Invalid PlanNode.");
   }
@@ -54,7 +54,7 @@ std::unique_ptr<Executor> ExecutorGenerator::Generate(
                       ? db.GetGenPKHandle(txn_id, tab.GetName())
                       : nullptr;
     return std::make_unique<InsertExecutor>(
-        db.GetModifyHandle(txn_id, insert_plan->table_name_),
+        db.GetModifyHandle(txn_id, tab.GetName()),
         Generate(insert_plan->ch_.get(), db, txn_id),
         FKChecker(tab.GetFK(), tab, txn_id, db), gen_pk, tab);
   }
@@ -65,8 +65,9 @@ std::unique_ptr<Executor> ExecutorGenerator::Generate(
     if (!table_schema_index) {
       throw DBException("Cannot find table \'{}\'", seqscan_plan->table_name_);
     }
+    auto& tab = db.GetDBSchema()[table_schema_index.value()];
     return std::make_unique<SeqScanExecutor>(
-        db.GetIterator(txn_id, seqscan_plan->table_name_),
+        db.GetIterator(txn_id, tab.GetName()),
         seqscan_plan->predicate_.GenExpr(), seqscan_plan->output_schema_);
   }
 
@@ -90,7 +91,7 @@ std::unique_ptr<Executor> ExecutorGenerator::Generate(
     }
     auto& tab = db.GetDBSchema()[table_schema_index.value()];
     return std::make_unique<DeleteExecutor>(
-        db.GetModifyHandle(txn_id, delete_plan->table_name_),
+        db.GetModifyHandle(txn_id, tab.GetName()),
         Generate(delete_plan->ch_.get(), db, txn_id),
         FKChecker(tab.GetFK(), tab, txn_id, db),
         PKChecker(tab.GetName(), tab.GetHidePKFlag(), txn_id, db), tab);
