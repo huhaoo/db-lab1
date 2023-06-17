@@ -23,6 +23,8 @@
 
 namespace wing {
 
+// Return the minimum element in [start, end) which >= "d".
+// Return "end" if all elements in [start, end) < "d".
 template <typename Addable, typename T, typename ThreeWayCompare>
 Addable LowerBoundAddable(Addable start, Addable end, T d, ThreeWayCompare comp) {
   while (start != end) {
@@ -35,6 +37,8 @@ Addable LowerBoundAddable(Addable start, Addable end, T d, ThreeWayCompare comp)
   }
   return start;
 }
+// Return the minimum element in [start, end) which > "d".
+// Return "end" if all elements in [start, end) <= "d".
 template <typename Addable, typename T, typename ThreeWayCompare>
 Addable UpperBoundAddable(Addable start, Addable end, T d, ThreeWayCompare comp) {
   while (start != end) {
@@ -54,9 +58,6 @@ typedef uint32_t pgid_t;
 typedef uint16_t pgoff_t;
 typedef int16_t signed_pgoff_t;
 typedef uint16_t slotid_t;
-
-void free_slot(std::string_view);
-
 // A page handle that references a page buffer. This is not expected to be used
 // directly by the user. The user should use PlainPage or SortedPage instead,
 // which are derived classes of this class.
@@ -172,6 +173,7 @@ public:
     return *this;
   }
   void Init(std::size_t special_size) {
+    MarkDirty();
     slotid_t *num = (slotid_t *)page_;
     *num = 0;
     pgoff_t *special = (pgoff_t *)(num + 1);
@@ -186,11 +188,11 @@ public:
   // Return the mutable pointer to the start of the slot.
   inline char *SlotRawMut(slotid_t slot) {
     MarkDirty();
-    Assert(slot < SlotNum());
+    assert(slot < SlotNum());
     return page_ + StartsMut()[slot];
   }
   inline std::string_view Slot(slotid_t slot) const {
-    Assert(slot < SlotNum());
+    assert(slot < SlotNum());
     return std::string_view(SlotRaw(slot), SlotSize(slot));
   }
   /* Read data from the special space.
@@ -256,7 +258,6 @@ public:
    * page will overflow.
    */
   void AppendSlotUnchecked(std::string_view slot) {
-    //   printf(". %s\n",slot.data()+2);
     MarkDirty();
     pgoff_t tail_offset = Ends()[SlotNum()];
     pgoff_t start = tail_offset - slot.size();
@@ -419,7 +420,7 @@ private:
   }
   // Return the pointer to the start of the slot.
   inline const char *SlotRaw(slotid_t slot) const {
-    Assert(slot < SlotNum());
+    assert(slot < SlotNum());
     return page_ + Starts()[slot];
   }
   // The difference between the slot's end offset and start offset is its size.
@@ -444,7 +445,6 @@ private:
     return SlotsSize(start, end) + (end - start) * sizeof(pgoff_t);
   }
   // Return the size of free space in this page.
-public:
   inline pgoff_t FreeSpace() const {
     slotid_t num = SlotNum();
     const pgoff_t *ends = Ends();
@@ -468,7 +468,6 @@ public:
     return FreeSpace() >= src.SlotsSpace(start, end);
   }
 
-public:
   SlotKeyCompare slot_key_comp_;
   SlotCompare slot_comp_;
   friend class PageManager;
@@ -484,12 +483,12 @@ public:
     evictable_.pop_front();
     size_t erased = its_.erase(ret);
     (void)erased;
-    Assert(erased == 1);
+    assert(erased == 1);
     return ret;
   }
   void Pin(pgid_t pgid) {
     auto it = its_.find(pgid);
-    Assert(it != its_.end());
+    assert(it != its_.end());
     evictable_.erase(it->second);
     its_.erase(it);
   }
@@ -499,7 +498,7 @@ public:
     --it;
     auto ret = its_.emplace(pgid, it);
     (void)ret;
-    Assert(ret.second);
+    assert(ret.second);
   }
   void Remove(pgid_t pgid) {
     auto it = its_.find(pgid);
@@ -552,7 +551,6 @@ public:
    * this page ID to get a handle for this page. Note that SortedPage should be
    * initialized with SortedPage::Init before using it for the first time.
    */
-  pgid_t __Allocate();
   pgid_t Allocate();
   // Free the page ID. You have to make sure that there is no SortedPage or
   // PlainPage handle that is still referencing this page.
@@ -595,14 +593,17 @@ public:
 
   // Made public for test
   inline pgid_t& PageNum() {
-    // print_log;
-    return *(pgid_t *)(buf_[0].addr + PAGE_NUM_OFF);
+    return *(pgid_t *)(buf_[0].addr_mut() + PAGE_NUM_OFF);
   }
   // For test
   void ShrinkToFit();
 private:
   struct PageBufInfo {
-    char *addr;
+    const char *addr() const {
+      return reinterpret_cast<const char *>(buf.get());
+    }
+    char *addr_mut() { return reinterpret_cast<char *>(buf.get()); }
+    std::unique_ptr<char[]> buf;
     size_t refcount;
     bool dirty;
   };
@@ -616,18 +617,20 @@ private:
       free_list_buf_standby_(free_list_bufs_[1]),
       free_list_buf_standby_full_(false) {
     // One buffer page is for pinned meta page.
-    Assert(max_buf_pages_ >= 2);
+    assert(max_buf_pages_ >= 2);
   }
   static constexpr pgoff_t PGID_PER_PAGE = Page::SIZE / sizeof(pgid_t) - 1;
   static constexpr pgoff_t FREE_LIST_HEAD_OFF = 0;
   static constexpr pgoff_t FREE_PAGES_IN_HEAD = FREE_LIST_HEAD_OFF + sizeof(pgid_t);
   static constexpr pgoff_t PAGE_NUM_OFF = FREE_PAGES_IN_HEAD + sizeof(pgid_t);
   inline pgid_t& FreeListHead() {
-    return *(pgid_t *)(buf_[0].addr + FREE_LIST_HEAD_OFF);
+    return *(pgid_t *)(buf_[0].addr_mut() + FREE_LIST_HEAD_OFF);
   }
   inline pgid_t& FreePagesInHead() {
-    return *(pgid_t *)(buf_[0].addr + FREE_PAGES_IN_HEAD);
+    return *(pgid_t *)(buf_[0].addr_mut() + FREE_PAGES_IN_HEAD);
   }
+
+  pgid_t __Allocate();
 
   void AllocMeta();
   void Init();
@@ -672,7 +675,5 @@ inline void Page::Drop() {
 }
 
 }
-
-#undef Assert
 
 #endif	//PAGE-MANAGER_H_
