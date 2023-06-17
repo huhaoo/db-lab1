@@ -129,21 +129,21 @@ class BPlusTreeTable : public AbstractBPlusTreeTable {
     void Init() override {}
     bool Delete(std::string_view key) override {
       std::string_view table_name=std::string_view(ctx_->table_name_); Txn* p=TxnManager::GetTxn(ctx_->txn_id_).value(); std::unique_lock lock(p->rw_latch_);
-      ctx_->lock_manager_->AcquireTableLock(table_name,LockMode::X,p);
+      ctx_->lock_manager_->AcquireTupleLock(table_name,key,LockMode::X,p);
       p->modify_records_.push(ModifyRecord(ModifyType::DELETE,table_name,key,table_.Get(key)));
       // P4 DONE
       return table_.Delete(key);
     }
     bool Insert(std::string_view key, std::string_view value) override {
       std::string_view table_name=std::string_view(ctx_->table_name_); Txn* p=TxnManager::GetTxn(ctx_->txn_id_).value(); std::unique_lock lock(p->rw_latch_);
-      ctx_->lock_manager_->AcquireTableLock(table_name,LockMode::X,p);
+      ctx_->lock_manager_->AcquireTupleLock(table_name,key,LockMode::X,p);
       p->modify_records_.push(ModifyRecord(ModifyType::INSERT,table_name,key,std::nullopt));
       // P4 DONE
       return table_.Insert(key, value);
     }
     bool Update(std::string_view key, std::string_view value) override {
       std::string_view table_name=std::string_view(ctx_->table_name_); Txn* p=TxnManager::GetTxn(ctx_->txn_id_).value(); std::unique_lock lock(p->rw_latch_);
-      ctx_->lock_manager_->AcquireTableLock(table_name,LockMode::X,p);
+      ctx_->lock_manager_->AcquireTupleLock(table_name,key,LockMode::X,p);
       p->modify_records_.push(ModifyRecord(ModifyType::UPDATE,table_name,key,table_.Get(key)));
       // P4 DONE
       return table_.Update(key, value);
@@ -161,7 +161,7 @@ class BPlusTreeTable : public AbstractBPlusTreeTable {
     void Init() override {}
     const uint8_t* Search(std::string_view key) override {
       std::string_view table_name=std::string_view(ctx_->table_name_); Txn* p=TxnManager::GetTxn(ctx_->txn_id_).value(); std::unique_lock lock(p->rw_latch_);
-      if(!p->table_lock_set_[LockMode::X].count(std::string(table_name))) ctx_->lock_manager_->AcquireTableLock(table_name,LockMode::S,p);
+      if(!p->table_lock_set_[LockMode::X].count(std::string(table_name))) ctx_->lock_manager_->AcquireTupleLock(table_name,key,LockMode::S,p);
       // P4 DONE
       auto ret = tree_.Get(key);
       if (!ret.has_value())

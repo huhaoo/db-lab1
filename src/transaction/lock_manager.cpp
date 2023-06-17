@@ -16,6 +16,15 @@
 
 // TODO
 namespace wing {
+const char* format_lockmode(const wing::LockMode& mode) {
+	switch (mode) {
+		case wing::LockMode::S:   return "S";
+		case wing::LockMode::X:   return "X";
+		case wing::LockMode::IS:  return "IS";
+		case wing::LockMode::IX:  return "IX";
+		case wing::LockMode::SIX: return "SIX";
+	}
+}
 template<class T> T &get_value_in_map(std::unordered_map<std::string,std::unique_ptr<T> > &m,std::string_view s)
 {
 	if(!m.count(std::string(s))) m[std::string(s)]=std::make_unique<T>();
@@ -74,7 +83,9 @@ void AcquireLock(LockManager::LockRequestList &lock_table,LockMode mode, Txn *tx
 {
   cmode.reset();
   std::unique_lock<std::mutex> lock(lock_table.latch_);
-#define THROW(a,b) { txn->state_=TxnState::ABORTED; printf("txn %ld aborted.\n",txn->txn_id_); fflush(stdout); throw a(b); return; }
+	// printf("before txn %d acquire, update lock: %d, Waiting list :\n",txn->txn_id_,lock_table.upgrading_);
+	// for(auto i:lock_table.list_) printf("(%d, %s, %d) ",i->txn_id_,format_lockmode(i->mode_),i->active_);; putchar(10);
+#define THROW(a,b) { txn->state_=TxnState::ABORTED; /*printf("txn %ld aborted.\n",txn->txn_id_);*/ fflush(stdout); throw a(b); return; }
 	LockManager::LockRequest *cur=nullptr; for(auto &i:lock_table.list_) if(i->txn_id_==txn->txn_id_) cur=i.get();
 	if(cur!=nullptr&&cur->mode_==mode) return ;
 	if(cur!=nullptr)
@@ -110,6 +121,7 @@ bool RemoveLockTable(LockManager::LockRequestList &lock_table,LockMode mode, Txn
 	for(auto i=lock_table.list_.begin();i!=lock_table.list_.end();i++) if((*i)->txn_id_==txn->txn_id_&&(*i)->mode_==mode)
 	{
 		lock_table.list_.erase(i);
+		if(lock_table.upgrading_==txn->txn_id_) lock_table.upgrading_=INVALID_TXN_ID;
     return true;
 	}
   return false;
@@ -120,18 +132,9 @@ void ReleaseLock(LockManager::LockRequestList &lock_table,LockMode mode, Txn *tx
   if(RemoveLockTable(lock_table,mode,txn)) lock_table.cv_.notify_all();
  lock_table.latch_.unlock();
 }
-const char* format_lockmode(const wing::LockMode& mode) {
-	switch (mode) {
-		case wing::LockMode::S:   return "S";
-		case wing::LockMode::X:   return "X";
-		case wing::LockMode::IS:  return "IS";
-		case wing::LockMode::IX:  return "IX";
-		case wing::LockMode::SIX: return "SIX";
-	}
-}
 void LockManager::AcquireTableLock(std::string_view table_name, LockMode mode, Txn *txn)
 {
-	printf("txn %ld acquire a %s lock in table %s: acquire\n",txn->txn_id_,format_lockmode(mode),std::string(table_name).c_str()); fflush(stdout);
+	// printf("txn %ld acquire a %s lock in table %s: acquire\n",txn->txn_id_,format_lockmode(mode),std::string(table_name).c_str()); fflush(stdout);
 	if(txn->state_==TxnState::ABORTED){ throw TxnInvalidBehaviorException("Txn is aborted."); return ; }
 	if(txn->state_==TxnState::SHRINKING){ txn->state_=TxnState::ABORTED; throw TxnInvalidBehaviorException("Txn is shrinking."); return ; }
  tuple_lock_table_latch_.lock();
@@ -140,12 +143,12 @@ void LockManager::AcquireTableLock(std::string_view table_name, LockMode mode, T
 	AcquireLock(lock_table,mode,txn);
   if(cmode.has_value()) txn->table_lock_set_[cmode.value()].erase(std::string(table_name));
 	txn->table_lock_set_[mode].insert(std::string(table_name));
-	printf("txn %ld acquire a %s lock in table %s: success\n",txn->txn_id_,format_lockmode(mode),std::string(table_name).c_str()); fflush(stdout);
+	// printf("txn %ld acquire a %s lock in table %s: success\n",txn->txn_id_,format_lockmode(mode),std::string(table_name).c_str()); fflush(stdout);
 }
 
 void LockManager::ReleaseTableLock(std::string_view table_name, LockMode mode, Txn *txn)
 {
-	printf("txn %ld release a %s lock in table %s\n",txn->txn_id_,format_lockmode(mode),std::string(table_name).c_str()); fflush(stdout);
+	// printf("txn %ld release a %s lock in table %s\n",txn->txn_id_,format_lockmode(mode),std::string(table_name).c_str()); fflush(stdout);
   if(txn->state_==TxnState::GROWING) txn->state_=TxnState::SHRINKING;
  tuple_lock_table_latch_.lock();
 	LockRequestList &lock_table=get_value_in_map(table_lock_table_,table_name);
@@ -156,7 +159,7 @@ void LockManager::ReleaseTableLock(std::string_view table_name, LockMode mode, T
 
 void LockManager::AcquireTupleLock(std::string_view table_name,std::string_view key, LockMode mode, Txn *txn)
 {
-	printf("txn %ld acquire a %s lock in table %s tuple %s: acquire\n",txn->txn_id_,format_lockmode(mode),std::string(table_name).c_str(),std::string(key).c_str()); fflush(stdout);
+	// printf("txn %ld acquire a %s lock in table %s tuple %s: acquire\n",txn->txn_id_,format_lockmode(mode),std::string(table_name).c_str(),std::string(key).c_str()); fflush(stdout);
  tuple_lock_table_latch_.lock();
   int valid=false;
   if(mode==LockMode::S&&(txn->table_lock_set_[LockMode::S]  .count(std::string(table_name))||
@@ -170,7 +173,7 @@ void LockManager::AcquireTupleLock(std::string_view table_name,std::string_view 
   if(!valid)
   {
     tuple_lock_table_latch_.unlock();
-    printf("txn %ld aborted.\n",txn->txn_id_);
+    // printf("txn %ld aborted.\n",txn->txn_id_);
     throw TxnInvalidBehaviorException("Invalid tuple lock."); return ;
   }
 	LockRequestList &lock_table=get_value_in_map(tuple_lock_table_[std::string(table_name)],key);
@@ -178,12 +181,12 @@ void LockManager::AcquireTupleLock(std::string_view table_name,std::string_view 
 	AcquireLock(lock_table,mode,txn);
   if(cmode.has_value()) txn->tuple_lock_set_[cmode.value()][std::string(table_name)].erase(std::string(key));
 	txn->tuple_lock_set_[mode][std::string(table_name)].insert(std::string(key));
-	printf("txn %ld acquire a %s lock in table %s tuple %s: success\n",txn->txn_id_,format_lockmode(mode),std::string(table_name).c_str(),std::string(key).c_str()); fflush(stdout);
+	// printf("txn %ld acquire a %s lock in table %s tuple %s: success\n",txn->txn_id_,format_lockmode(mode),std::string(table_name).c_str(),std::string(key).c_str()); fflush(stdout);
 }
 
 void LockManager::ReleaseTupleLock(std::string_view table_name,std::string_view key, LockMode mode, Txn *txn)
 {
-	printf("txn %ld release a %s lock in table %s tuple %s\n",txn->txn_id_,format_lockmode(mode),std::string(table_name).c_str(),std::string(key).c_str()); fflush(stdout);
+	// printf("txn %ld release a %s lock in table %s tuple %s\n",txn->txn_id_,format_lockmode(mode),std::string(table_name).c_str(),std::string(key).c_str()); fflush(stdout);
   if(txn->state_==TxnState::GROWING) txn->state_=TxnState::SHRINKING;
  tuple_lock_table_latch_.lock();
 	LockRequestList &lock_table=get_value_in_map(tuple_lock_table_[std::string(table_name)],key);

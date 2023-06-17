@@ -49,6 +49,7 @@ class DB::Impl {
     auto p=TxnManager::GetTxn(txn_id).value();
     std::unique_lock lock(p->rw_latch_);
     for(auto i:{LockMode::S,LockMode::X,LockMode::SIX}) if(p->table_lock_set_[i].count(std::string(table_name))) return ;
+    // printf("Q => %d %s %d\n",p->txn_id_,std::string(table_name).c_str(),p->table_lock_set_[LockMode::IX].count(std::string(table_name)));
     txn_manager_.GetLockManager().AcquireTableLock(table_name,p->table_lock_set_[LockMode::IX].count(std::string(table_name))?LockMode::SIX:LockMode::S, p);
   }
   void requireIS(txn_id_t txn_id, std::string_view table_name)
