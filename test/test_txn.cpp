@@ -574,17 +574,12 @@ TEST(LockManagerTest, DISABLED_WoundWaitTest) {
 }
 
 TEST(QueryTest, SimpleAbortTest) {
-  print_log;
   std::filesystem::remove("__tmp0100");
-  print_log;
   auto db = std::make_unique<wing::Instance>("__tmp0100", SAKURA_USE_JIT_FLAG);
-  print_log;
   auto &txn_manager = db->GetTxnManager();
-  print_log;
   EXPECT_TRUE(db->Execute("create table Numbers(t varchar(30) primary key, a "
                           "int32, b float64);")
                   .Valid());
-  print_log;
   auto txn1 = txn_manager.Begin();
   EXPECT_TRUE(db->Execute("insert into Numbers values ('blogaholic', 1, 2.3), "
                           " ('bookaholic', 2, 3.4), "
@@ -598,15 +593,10 @@ TEST(QueryTest, SimpleAbortTest) {
                           " ('spendaholic', 10, 75.0);",
                     txn1->txn_id_)
                   .Valid());
-  print_log;
   txn_manager.Abort(txn1);
-  print_log;
   auto res = db->Execute("select * from Numbers;");
-  print_log;
   EXPECT_TRUE(res.Valid());
-  print_log;
   EXPECT_FALSE(res.Next());
-  print_log;
 }
 
 TEST(QueryTest, RollbackTest) {

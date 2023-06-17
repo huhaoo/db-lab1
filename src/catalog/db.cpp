@@ -44,32 +44,58 @@ class DB::Impl {
     tick_table_.erase(tick_table_.find(table_name));
   }
 
+  void requireS(txn_id_t txn_id, std::string_view table_name)
+  {
+    auto p=TxnManager::GetTxn(txn_id).value();
+    std::unique_lock lock(p->rw_latch_);
+    for(auto i:{LockMode::S,LockMode::X,LockMode::SIX}) if(p->table_lock_set_[i].count(std::string(table_name))) return ;
+    txn_manager_.GetLockManager().AcquireTableLock(table_name,p->table_lock_set_[LockMode::IX].count(std::string(table_name))?LockMode::SIX:LockMode::S, p);
+  }
+  void requireIS(txn_id_t txn_id, std::string_view table_name)
+  {
+    auto p=TxnManager::GetTxn(txn_id).value();
+    std::unique_lock lock(p->rw_latch_);
+    for(auto i:{LockMode::S,LockMode::X,LockMode::IS,LockMode::IX,LockMode::SIX}) if(p->table_lock_set_[i].count(std::string(table_name))) return ;
+    txn_manager_.GetLockManager().AcquireTableLock(table_name,LockMode::IS, p);
+  }
+  void requireIX(txn_id_t txn_id, std::string_view table_name)
+  {
+    auto p=TxnManager::GetTxn(txn_id).value();
+    std::unique_lock lock(p->rw_latch_);
+    for(auto i:{LockMode::IX,LockMode::X,LockMode::SIX}) if(p->table_lock_set_[i].count(std::string(table_name))) return ;
+    txn_manager_.GetLockManager().AcquireTableLock(table_name,p->table_lock_set_[LockMode::S].count(std::string(table_name))?LockMode::SIX:LockMode::IX, p);
+  }
+
   std::unique_ptr<Iterator<const uint8_t*>> GetIterator(
       txn_id_t txn_id, std::string_view table_name) {
-    // P4 TODO
+    requireS(txn_id,table_name);
     return table_storage_.GetIterator(table_name);
+    // P4 DONE
   }
 
   // For simplicity, range iterator holds the S lock on the whole table.
   std::unique_ptr<Iterator<const uint8_t*>> GetRangeIterator(txn_id_t txn_id,
       std::string_view table_name, std::tuple<std::string_view, bool, bool> L,
       std::tuple<std::string_view, bool, bool> R) {
-    // P4 TODO
+    requireS(txn_id,table_name);
     return table_storage_.GetRangeIterator(table_name, L, R);
+    // P4 DONE
   }
 
   std::unique_ptr<ModifyHandle> GetModifyHandle(
       txn_id_t txn_id, std::string_view table_name) {
-    // P4 TODO
+    requireIX(txn_id,table_name);
     return table_storage_.GetModifyHandle(std::make_unique<TxnExecCtx>(
         txn_id, std::string(table_name), &txn_manager_.GetLockManager()));
+    // P4 DONE
   }
 
   std::unique_ptr<SearchHandle> GetSearchHandle(
       txn_id_t txn_id, std::string_view table_name) {
-    // P4 TODO
+    requireIX(txn_id,table_name);
     return table_storage_.GetSearchHandle(std::make_unique<TxnExecCtx>(
         txn_id, std::string(table_name), &txn_manager_.GetLockManager()));
+    // P4 DONE
   }
 
   // No need to handle txn logic.

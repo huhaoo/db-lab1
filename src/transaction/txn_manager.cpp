@@ -28,6 +28,42 @@ void TxnManager::Commit(Txn* txn) {
 void TxnManager::Abort(Txn* txn) {
   // P4 TODO: rollback
   txn->state_ = TxnState::ABORTED;
+  while(!txn->modify_records_.empty())
+  {
+    auto t=txn->modify_records_.top(); txn->modify_records_.pop();
+    FieldType table_type=storage_.GetDBSchema().GetTables()[storage_.GetDBSchema().Find(t.table_name_).value()].GetPrimaryKeySchema().type_;
+    switch(table_type)
+    {
+    case FieldType::INT32:
+    case FieldType::INT64:
+     {
+      auto &table_=*(BPlusTreeTable<IntegerKeyCompare>*)storage_.GetTable(std::string_view(t.table_name_));
+      if(t.type_==ModifyType::DELETE){ assert(t.old_value_.has_value()); table_.Insert(t.key_,t.old_value_.value()); }
+      if(t.type_==ModifyType::INSERT) table_.Delete(t.key_);
+      if(t.type_==ModifyType::UPDATE){ assert(t.old_value_.has_value()); table_.Update(t.key_,t.old_value_.value()); }
+      break;
+     }
+    case FieldType::FLOAT64:
+     {
+      auto &table_=*(BPlusTreeTable<FloatKeyCompare>*)storage_.GetTable(std::string_view(t.table_name_));
+      if(t.type_==ModifyType::DELETE){ assert(t.old_value_.has_value()); table_.Insert(t.key_,t.old_value_.value()); }
+      if(t.type_==ModifyType::INSERT) table_.Delete(t.key_);
+      if(t.type_==ModifyType::UPDATE){ assert(t.old_value_.has_value()); table_.Update(t.key_,t.old_value_.value()); }
+      break;
+     }
+    case FieldType::CHAR:
+    case FieldType::VARCHAR:
+     {
+      auto &table_=*(BPlusTreeTable<StringKeyCompare>*)storage_.GetTable(std::string_view(t.table_name_));
+      if(t.type_==ModifyType::DELETE){ assert(t.old_value_.has_value()); table_.Insert(t.key_,t.old_value_.value()); }
+      if(t.type_==ModifyType::INSERT) table_.Delete(t.key_);
+      if(t.type_==ModifyType::UPDATE){ assert(t.old_value_.has_value()); table_.Update(t.key_,t.old_value_.value()); }
+      break;
+     }
+    default:
+      assert(0);
+    }
+  }
   // Release all the locks.
   ReleaseAllLocks(txn);
 }
