@@ -2,6 +2,8 @@
 #include "common/logging.hpp"
 #include <memory>
 #include <mutex>
+#include <stdio.h>
+#define print_log printf("Running on line %d at file \"%s\"\n",__LINE__,__FILE__),fflush(stdout)
 
 namespace wing {
 
@@ -109,6 +111,7 @@ pgid_t PageManager::__Allocate() {
 pgid_t PageManager::Allocate() {
   std::lock_guard l(latch_);
   pgid_t ret = __Allocate();
+  return ret;
   assert(ret <= is_free_.size());
   if (ret == is_free_.size()) {
     is_free_.push_back(false);
@@ -210,6 +213,7 @@ void PageManager::Init() {
 	FreePagesInHead() = 0;
 	PageNum() = 2;
 	std::filesystem::resize_file(path_, Page::SIZE);
+  is_free_={0,0};
 }
 
 std::optional<io::Error> PageManager::Load() {

@@ -19,6 +19,7 @@
 #include "transaction/txn.hpp"
 #include "transaction/txn_manager.hpp"
 #include "zipf.hpp"
+#define print_log printf("Running on line %d at file \"%s\"\n",__LINE__,__FILE__),fflush(stdout)
 
 using namespace wing;
 using namespace wing::wing_testing;
@@ -133,6 +134,7 @@ TEST(LockManagerTest, InvalidBehaviorTest2) {
   auto &lock_manager = txn_manager.GetLockManager();
 
   // Incompatible upgrade
+  // print_log;
   for (auto mode : {LockMode::IS, LockMode::IX}) {
     Txn *txn1 = txn_manager.Begin();
     lock_manager.AcquireTableLock("t", LockMode::S, txn1);
@@ -140,7 +142,7 @@ TEST(LockManagerTest, InvalidBehaviorTest2) {
         TxnInvalidBehaviorException);
     txn_manager.Abort(txn1);
   }
-
+  // print_log;
   for (auto mode : {LockMode::IS, LockMode::S}) {
     Txn *txn1 = txn_manager.Begin();
     lock_manager.AcquireTableLock("t", LockMode::IX, txn1);
@@ -148,7 +150,7 @@ TEST(LockManagerTest, InvalidBehaviorTest2) {
         TxnInvalidBehaviorException);
     txn_manager.Abort(txn1);
   }
-
+  // print_log;
   for (auto mode : {LockMode::S, LockMode::IS, LockMode::IX}) {
     Txn *txn1 = txn_manager.Begin();
     lock_manager.AcquireTableLock("t", LockMode::SIX, txn1);
@@ -156,7 +158,7 @@ TEST(LockManagerTest, InvalidBehaviorTest2) {
         TxnInvalidBehaviorException);
     txn_manager.Abort(txn1);
   }
-
+  // print_log;
   for (auto mode : {LockMode::S, LockMode::IS, LockMode::IX, LockMode::SIX}) {
     Txn *txn1 = txn_manager.Begin();
     lock_manager.AcquireTableLock("t", LockMode::X, txn1);
@@ -572,12 +574,17 @@ TEST(LockManagerTest, DISABLED_WoundWaitTest) {
 }
 
 TEST(QueryTest, SimpleAbortTest) {
+  print_log;
   std::filesystem::remove("__tmp0100");
+  print_log;
   auto db = std::make_unique<wing::Instance>("__tmp0100", SAKURA_USE_JIT_FLAG);
+  print_log;
   auto &txn_manager = db->GetTxnManager();
+  print_log;
   EXPECT_TRUE(db->Execute("create table Numbers(t varchar(30) primary key, a "
                           "int32, b float64);")
                   .Valid());
+  print_log;
   auto txn1 = txn_manager.Begin();
   EXPECT_TRUE(db->Execute("insert into Numbers values ('blogaholic', 1, 2.3), "
                           " ('bookaholic', 2, 3.4), "
@@ -591,10 +598,15 @@ TEST(QueryTest, SimpleAbortTest) {
                           " ('spendaholic', 10, 75.0);",
                     txn1->txn_id_)
                   .Valid());
+  print_log;
   txn_manager.Abort(txn1);
+  print_log;
   auto res = db->Execute("select * from Numbers;");
+  print_log;
   EXPECT_TRUE(res.Valid());
+  print_log;
   EXPECT_FALSE(res.Next());
+  print_log;
 }
 
 TEST(QueryTest, RollbackTest) {

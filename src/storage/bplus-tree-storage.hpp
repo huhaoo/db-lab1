@@ -13,7 +13,6 @@
 #include "transaction/lock_manager.hpp"
 #include "transaction/lock_mode.hpp"
 #include "transaction/txn_manager.hpp"
-#include <iostream>
 
 namespace wing {
 
@@ -93,7 +92,7 @@ class BPlusTreeTable : public AbstractBPlusTreeTable {
   class RangeIterator : public wing::Iterator<const uint8_t*> {
    public:
     RangeIterator(typename tree_t::Iter&& iter, std::string&& end)
-      : first_flag_(true), iter_(std::move(iter)), end_(std::move(end)) { }
+      : first_flag_(true), iter_(std::move(iter)), end_(std::move(end)) {}
     /* TODO: implement the real Init(). */
     void Init() override { first_flag_ = true; }
     const uint8_t* Next() override {
@@ -185,7 +184,6 @@ class BPlusTreeTable : public AbstractBPlusTreeTable {
   auto GetRangeIterator(std::tuple<std::string_view, bool, bool> L,
       std::tuple<std::string_view, bool, bool> R)
       -> std::unique_ptr<wing::Iterator<const uint8_t*>> {
-      // printf("%d %d  %d %d\n",std::get<1>(L),std::get<2>(L),std::get<1>(R),std::get<2>(R));
     auto iter = std::get<1>(L)   ? tree_.Begin()
                 : std::get<2>(L) ? tree_.LowerBound(std::get<0>(L))
                                  : tree_.UpperBound(std::get<0>(L));

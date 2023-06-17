@@ -33,12 +33,12 @@ class LockManager {
   class LockRequest {
    public:
     LockRequest(txn_id_t txn_id, LockMode mode)
-      : txn_id_(txn_id), mode_(mode), granted_(false) {}
+      : txn_id_(txn_id), mode_(mode), active_(false) {}
     ~LockRequest() = default;
 
     txn_id_t txn_id_;
     LockMode mode_;
-    bool granted_;
+    bool active_;
   };
 
   class LockRequestList {

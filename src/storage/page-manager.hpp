@@ -19,6 +19,7 @@
 #include <vector>
 
 #define Assert(x) do if(!(x)){ printf("Assertion error at file \"%s\" line %d\n",__FILE__,__LINE__); exit(1); } while(0)
+#define print_log printf("Running on line %d at file \"%s\"\n",__LINE__,__FILE__),fflush(stdout)
 
 namespace wing {
 
@@ -594,6 +595,7 @@ public:
 
   // Made public for test
   inline pgid_t& PageNum() {
+    // print_log;
     return *(pgid_t *)(buf_[0].addr + PAGE_NUM_OFF);
   }
   // For test

@@ -206,10 +206,12 @@ class BPlusTree {
 	/* Insert only if the key does not exists.
 	 * Return whether the insertion is successful.
 	 */
-	bool Insert(std::string_view key, std::string_view value) {
-		//   printf("+ %s %s\n",key.data(),value.data());
+	std::mutex latch_;
+	bool __Insert(std::string_view key, std::string_view value)
+	{
 		static const int W=1288;
 		int n=LevelNum(); std::vector<pgid_t> road=access(key);
+
 		
 		LeafPage x=GetLeafPage(road.back());
 		if(x.Find(key)!=x.SlotNum()) return false;
@@ -273,14 +275,19 @@ class BPlusTree {
 
 		return true;
 		// DEBUG
-
+	}
+	bool Insert(std::string_view key, std::string_view value) {
+		//   printf("+ %s %s\n",key.data(),value.data());
+		std::lock_guard l(latch_);
+		return __Insert(key,value);
 	}
 	/* Update only if the key already exists.
 	 * Return whether the update is successful.
 	 */
 	bool Update(std::string_view key, std::string_view value) {
+		std::lock_guard l(latch_);
 		{ LeafPage x=access_leaf(key); if(x.Find(key)==x.SlotNum()) return false; }
-		Delete(key); Insert(key,value);
+		__Delete(key); __Insert(key,value);
 		return true;
 		// DEBUG
 		// TODO: can be much faster!!
@@ -293,13 +300,14 @@ class BPlusTree {
 		// DEBUG
 	}
 	std::optional<std::string> Get(std::string_view key) {
+		std::lock_guard l(latch_);
 		LeafPage x=access_leaf(key); slotid_t s=x.Find(key);
 		if(s==x.SlotNum()) return std::nullopt;
 		return std::string(LeafSlotParse(x.Slot(s)).value);
 		// DEBUG
 	}
 	// Return succeed or not.
-	bool Delete(std::string_view key) {
+	bool __Delete(std::string_view key) {
 		//   printf("- %s\n",key.data());
 		int n=LevelNum(); std::vector<pgid_t> road=access(key); LeafPage x=GetLeafPage(road.back());
 		if(x.Find(key)==x.SlotNum()) return false;
@@ -333,6 +341,10 @@ class BPlusTree {
 		// Tree become empty
 		return true;
 		// DEBUG
+	}
+	bool Delete(std::string_view key) {
+		std::lock_guard l(latch_);
+		return __Delete(key);
 	}
 	// Logically equivalent to firstly Get(key) then Delete(key)
 	std::optional<std::string> Take(std::string_view key) {
